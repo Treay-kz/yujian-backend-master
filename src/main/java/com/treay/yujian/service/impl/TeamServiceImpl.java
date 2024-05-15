@@ -5,18 +5,16 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.treay.yujian.common.ErrorCode;
 import com.treay.yujian.exception.BusinessException;
 import com.treay.yujian.mapper.TeamMapper;
-import com.treay.yujian.model.dto.TeamQuery;
 import com.treay.yujian.model.enums.TeamStatusEnum;
 import com.treay.yujian.model.request.*;
+import com.treay.yujian.service.ChatService;
 import com.treay.yujian.service.TeamService;
 import com.treay.yujian.service.UserTeamService;
 import com.treay.yujian.model.domain.User;
 import com.treay.yujian.model.domain.UserTeam;
 import com.treay.yujian.model.vo.TeamUserVO;
-import com.treay.yujian.model.vo.UserVO;
 import com.treay.yujian.model.domain.Team;
 import com.treay.yujian.service.UserService;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
@@ -43,6 +41,8 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
 
     @Resource
     private UserService userService;
+    @Resource
+    private ChatService chatService;
 
     @Resource
     private RedissonClient redissonClient;
@@ -121,6 +121,11 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         if (!result) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "创建队伍失败");
         }
+
+        // 创建队伍聊天频道
+        chatService.addTeamChat(team,userId);
+
+
         return teamId;
     }
 

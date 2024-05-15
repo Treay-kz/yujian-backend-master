@@ -7,16 +7,14 @@
     <resultMap id="BaseResultMap" type="com.treay.yujian.model.domain.Chat">
             <id property="id" column="id" jdbcType="BIGINT"/>
             <result property="memberId" column="memberId" jdbcType="VARCHAR"/>
-            <result property="chatId" column="chatId" jdbcType="BIGINT"/>
-            <result property="messageType" column="messageType" jdbcType="TINYINT"/>
+            <result property="chatType" column="chatType" jdbcType="TINYINT"/>
             <result property="createTime" column="createTime" jdbcType="TIMESTAMP"/>
             <result property="updateTime" column="updateTime" jdbcType="TIMESTAMP"/>
             <result property="isDelete" column="isDelete" jdbcType="TINYINT"/>
     </resultMap>
 
     <sql id="Base_Column_List">
-        id,memberId,chatId,
-        messageType,createTime,updateTime,
-        isDelete
+        id,memberId,chatType,
+        createTime,updateTime,isDelete
     </sql>
 </mapper>

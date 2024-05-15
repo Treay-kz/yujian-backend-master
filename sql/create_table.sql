@@ -18,13 +18,12 @@ create table chat
     id              bigint auto_increment comment '主键'
         primary key,
     memberId        varchar(1024)                      null comment '成员id列表',
-    chatId          bigint                             null comment '频道id',
     messageType     tinyint  default 0                 null comment '频道类型 0-私聊 1-队伍聊天',
     createTime      datetime default CURRENT_TIMESTAMP null comment '创建时间',
     updateTime      datetime default CURRENT_TIMESTAMP null on update CURRENT_TIMESTAMP comment '修改时间',
     isDelete        tinyint  default 0                 null comment '是否删除'
 )
-    comment '消息表';
+    comment '聊天频道表';
 
 -- auto-generated definition
 create table message_send_log

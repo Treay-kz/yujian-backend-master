@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.*;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import org.springframework.format.annotation.DateTimeFormat;
+
 import java.io.Serializable;
 import java.util.Date;
 
@@ -15,7 +16,7 @@ import java.util.Date;
 @Data
 public class Chat implements Serializable {
     /**
-     * 主键
+     * 主键 频道id
      */
     @TableId(type = IdType.AUTO)
     private Long id;
@@ -26,14 +27,9 @@ public class Chat implements Serializable {
     private String memberId;
 
     /**
-     * 频道id
-     */
-    private Long chatId;
-
-    /**
      * 频道类型 0-私聊 1-队伍聊天
      */
-    private Integer messageType;
+    private Integer chatType;
 
     /**
      * 创建时间

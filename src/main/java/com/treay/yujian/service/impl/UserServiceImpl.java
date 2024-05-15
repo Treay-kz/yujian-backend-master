@@ -20,12 +20,12 @@ import com.treay.yujian.model.enums.AddFriendStatusEnum;
 import com.treay.yujian.model.request.*;
 import com.treay.yujian.model.vo.TagVo;
 import com.treay.yujian.model.vo.UserSendMessage;
+import com.treay.yujian.service.ChatService;
 import com.treay.yujian.service.NoticeService;
 import com.treay.yujian.utils.AlgorithmUtils;
 import com.treay.yujian.model.domain.User;
 import com.treay.yujian.service.UserService;
 import com.treay.yujian.utils.EmailUtils;
-import com.treay.yujian.utils.ValidateCodeUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.math3.util.Pair;
@@ -80,6 +80,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     @Resource
     @Lazy
     private NoticeService noticeService;
+
+    @Resource
+    private ChatService chatService;
 
 
     @Override
@@ -797,8 +800,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         // 在接收人好友列表添加上对方的id
         addFriendList(recipient, senderId);
 
+        // 创建私聊频道
+        boolean result = chatService.addUserChat(senderId,recipientId);
+        if (!result) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR);
+        }
         return true;
-
     }
 
     @Override

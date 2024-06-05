@@ -13,7 +13,7 @@ import com.treay.yujian.model.request.*;
 import com.treay.yujian.model.domain.User;
 import com.treay.yujian.model.vo.UserSendMessage;
 import com.treay.yujian.model.vo.WebSocketRespVO;
-import com.treay.yujian.server.WebSocketServer;
+
 import com.treay.yujian.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -49,16 +49,19 @@ public class UserController {
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
 
-    @Resource
-    private WebSocketServer webSocketServer;
 
+    /**
+     * 添加好友
+     * @param addFriendRequest
+     * @return
+     */
     @PostMapping("/friend/add")
     public BaseResponse<Boolean> addFriend(@RequestBody AddFriendRequest addFriendRequest) {
         if (addFriendRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+
         String key = TOKEN_KEY + addFriendRequest.getUuid();
-        System.out.println("key = " + key);
         User user = (User) redisTemplate.opsForHash().get(key, addFriendRequest.getUserAccount());
         if (user == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN);
@@ -67,6 +70,11 @@ public class UserController {
         return ResultUtils.success(result);
     }
 
+    /**
+     * 删除好友
+     * @param deleteFriendRequest
+     * @return
+     */
     @PostMapping("/friend/delete")
     public BaseResponse<Boolean> deleteFriend(@RequestBody DeleteFriendRequest deleteFriendRequest) {
         if (deleteFriendRequest == null) {
@@ -77,10 +85,18 @@ public class UserController {
         return ResultUtils.success(result);
     }
 
+    /**
+     * 同意好友申请
+     * @param addFriendRequest
+     * @return
+     */
     @PostMapping("/friend/agree")
     public BaseResponse<Boolean> agreeFriend(@RequestBody AddFriendRequest addFriendRequest) {
-        WebSocketRespVO webSocketRespVO = new WebSocketRespVO();
+//        WebSocketRespVO webSocketRespVO = new WebSocketRespVO();
         boolean agree = userService.agreeFriend(addFriendRequest);
+        if (!agree) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "同意好友申请失败");
+        }
 //        User user = userService.getById(addFriendRequest.getRecipientId());
 //        webSocketRespVO.setMessage("添加" + user.getUsername() + "的好友申请已通过");
 //        webSocketRespVO.setIsAgree(true);
@@ -89,18 +105,31 @@ public class UserController {
         return ResultUtils.success(agree);
     }
 
+    /**
+     * 拒绝好友申请
+     * @param addFriendRequest
+     * @return
+     */
     @PostMapping("/friend/reject")
     public BaseResponse<Boolean> rejectFriend(@RequestBody AddFriendRequest addFriendRequest) {
-        WebSocketRespVO webSocketRespVO = new WebSocketRespVO();
+//        WebSocketRespVO webSocketRespVO = new WebSocketRespVO();
         boolean agree = userService.rejectFriend(addFriendRequest);
-        User user = userService.getById(addFriendRequest.getRecipientId());
-        webSocketRespVO.setMessage("添加" + user.getUsername() + "的好友申请被拒绝");
-        webSocketRespVO.setIsAgree(false);
-        webSocketRespVO.setSenderId(addFriendRequest.getSenderId());
-        webSocketServer.sendToAllClient(JSONUtil.toJsonStr(webSocketRespVO));
+        if (!agree) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "拒绝好友申请失败");
+        }
+//        User user = userService.getById(addFriendRequest.getRecipientId());
+//        webSocketRespVO.setMessage("添加" + user.getUsername() + "的好友申请被拒绝");
+//        webSocketRespVO.setIsAgree(false);
+//        webSocketRespVO.setSenderId(addFriendRequest.getSenderId());
+//        webSocketServer.sendToAllClient(JSONUtil.toJsonStr(webSocketRespVO));
         return ResultUtils.success(true);
     }
 
+    /**
+     * 获取好友列表
+     * @param currentUserRequest
+     * @return
+     */
     @GetMapping("/friend/list")
     public BaseResponse<List<User>> listFriend(CurrentUserRequest currentUserRequest) {
         if (currentUserRequest == null) {
@@ -111,17 +140,33 @@ public class UserController {
         return ResultUtils.success(friendList);
     }
 
+
+    /**
+     * 刷新缓存
+     * @param currentUserRequest
+     * @return
+     */
     @PostMapping("/refresh/cache")
     public BaseResponse<Boolean> refreshCache(@RequestBody CurrentUserRequest currentUserRequest) {
         boolean refresh = userService.refreshCache(currentUserRequest);
         return ResultUtils.success(refresh);
     }
 
+    /**
+     * 发送验证码
+     * @param userSendMessage
+     * @return
+     */
     @PostMapping("/sendMessage")
-
     public BaseResponse<Boolean> sendMessage(@RequestBody UserSendMessage userSendMessage) {
         return userService.sendEmail(userSendMessage);
     }
+
+    /**
+     * 用户注册
+     * @param userRegisterRequest
+     * @return
+     */
     @PostMapping("/register")
     public BaseResponse<Long> userRegister(@RequestBody UserRegisterRequest userRegisterRequest) {
         if (userRegisterRequest == null) {
@@ -139,10 +184,21 @@ public class UserController {
         return ResultUtils.success(result);
     }
 
+    /**
+     * 用户修改密码
+     * @param userForgetRequest
+     * @return
+     */
     @PutMapping("/forget")
     public BaseResponse<Boolean> forget(@RequestBody UserForgetRequest userForgetRequest) {
         return userService.updatePassword(userForgetRequest);
     }
+
+    /**
+     * 用户登录
+     * @param userLoginRequest
+     * @return
+     */
     @PostMapping("/login")
     public BaseResponse<String> userLogin(@RequestBody UserLoginRequest userLoginRequest) {
         if (userLoginRequest == null) {
@@ -154,14 +210,18 @@ public class UserController {
         if (StringUtils.isAnyBlank(userAccount, userPassword)) {
             return ResultUtils.error(ErrorCode.PARAMS_ERROR);
         }
-        String key = userService.userLogin(userAccount, userPassword, uuid);
-        return ResultUtils.success(key);
+        String result = userService.userLogin(userAccount, userPassword, uuid);
+        return ResultUtils.success(result);
     }
 
+    /**
+     * 用户注销
+     * @param userRequest
+     * @return
+     */
     @PostMapping("/logout")
     public BaseResponse<Integer> userLogout(CurrentUserRequest userRequest) {
         String key = TOKEN_KEY + userRequest.getUuid();
-        System.out.println(key);
         if (key == null){
             throw  new BusinessException(ErrorCode.NULL_ERROR,"UUid为空");
         }
@@ -190,6 +250,13 @@ public class UserController {
         return ResultUtils.success(one);
     }
 
+    /**
+     * 搜索用户（条件查询）
+     * @param pageSize
+     * @param current
+     * @param currentUserAccount
+     * @return
+     */
     @GetMapping("/search")
     public BaseResponse<Page<User>> searchUsers(long pageSize, long current, String currentUserAccount) {
         QueryWrapper<User> wrapper = new QueryWrapper<>();
@@ -205,6 +272,11 @@ public class UserController {
         return ResultUtils.success(userPage);
     }
 
+    /**
+     * 通过标签搜素用户
+     * @param byTagsRequest
+     * @return
+     */
     @GetMapping("/search/tags")
     public BaseResponse<Page<User>> searchUsersByTags(SearchUserByTagsRequest byTagsRequest) {
         System.out.println("tagNameList = " + byTagsRequest);
@@ -216,13 +288,21 @@ public class UserController {
     }
 
 
+    /**
+     * 推荐用户
+     * @param pageSize
+     * @param pageNum
+     * @param userAccount
+     * @param uuid
+     * @return
+     */
     @GetMapping("/recommend")
     public BaseResponse<Page<User>> recommendUsers(long pageSize, long pageNum, String userAccount, String uuid) {
         // 参数验证
         if (pageSize <= 0 || pageNum <= 0 || StringUtils.isEmpty(userAccount) || StringUtils.isEmpty(uuid)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-
+        // 这一句的意思是判断是否为当前用户，
         User loginUser = userService.getLoginUser(userAccount, uuid);
         String key = USER_SEARCH_KEY + loginUser.getId();
 
@@ -262,6 +342,11 @@ public class UserController {
         return ResultUtils.success(userPage);
     }
 
+    /**
+     * 更新用户
+     * @param userDTO
+     * @return
+     */
 
     @PostMapping("/update")
     public BaseResponse<Integer> updateUser(@RequestBody UserDTO userDTO) {
@@ -274,6 +359,11 @@ public class UserController {
         return ResultUtils.success(result);
     }
 
+    /**
+     * 更新标签
+     * @param userDTO
+     * @return
+     */
 
     @PostMapping("/update/tags")
     public BaseResponse<Integer> updateTags(@RequestBody UserDTO userDTO) {
@@ -285,6 +375,13 @@ public class UserController {
         int result = userService.updateTags(userDTO, loginUser);
         return ResultUtils.success(result);
     }
+
+    /**
+     * 删除用户
+     * @param id
+     * @param request
+     * @return
+     */
     @PostMapping("/delete")
     public BaseResponse<Boolean> deleteUser(@RequestBody long id, HttpServletRequest request) {
         if (!userService.isAdmin(request)) {
@@ -300,17 +397,16 @@ public class UserController {
     /**
      * 获取最匹配的用户
      *
-     * @param currentUserRequest
+     * @param matchUserRequest
      * @return
      */
     @GetMapping("/match")
-    public BaseResponse<List<User>> matchUsers(CurrentUserRequest currentUserRequest) {
-        int num = currentUserRequest.getNum();
-        if (num <= 0 || num > 20) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+    public BaseResponse<List<User>> matchUsers(MatchUserRequest matchUserRequest) {
+        if (matchUserRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"参数为空");
         }
-        User loginUser = userService.getLoginUser(currentUserRequest.getUserAccount(), currentUserRequest.getUuid());
-
+        int num = matchUserRequest.getNum();
+        User loginUser = userService.getLoginUser(matchUserRequest.getUserAccount(), matchUserRequest.getUuid());
         List<User> matchUser = userService.matchUsers(num, loginUser);
 
         return ResultUtils.success(matchUser);

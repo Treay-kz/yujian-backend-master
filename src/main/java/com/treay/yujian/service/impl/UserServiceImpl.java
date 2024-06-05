@@ -285,6 +285,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public int updateUser(UserDTO userDTO, User loginUser) {
         long userId = userDTO.getId();
         //如果是管理员，可以更新所有用户
@@ -882,6 +883,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public int updateTags(UserDTO userDTO, User loginUser) {
         long userId = userDTO.getId();
         User oldUser = this.getById(userId);

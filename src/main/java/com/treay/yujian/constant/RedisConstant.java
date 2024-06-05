@@ -1,7 +1,7 @@
 package com.treay.yujian.constant;
 
 public interface RedisConstant {
-    public static final String TOKEN_KEY = "token:uuid:";
+    public static final String TOKEN_KEY = "yujian:token:uuid:";
     public static final String USER_SEARCH_KEY = "yujian:user:recommed:";
     public static final String USER_MATCH_KEY = "yujian:user:match:";
 

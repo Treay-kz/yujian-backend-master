@@ -66,44 +66,50 @@ public class FileController {
         String uuid = IdUtil.fastSimpleUUID();
         String fileUuid = uuid + "." + type;
         File avatar = new File(filePath + File.separator + fileUuid);
-        // 将文件保存到指定位置
-        file.transferTo(avatar);
-        //获取文件的md5
-        String md5 = SecureUtil.md5(avatar);
-        //查询文件是否存在
-        QueryWrapper<Avatar> queryWrapper = new QueryWrapper<>();
-        queryWrapper.lambda().eq(Avatar::getMd5, md5);
-        List<Avatar> avatarList = avatarService.list(queryWrapper);
 
-        //根据名字查询文件是否存在
-        QueryWrapper<Avatar> wrapper = new QueryWrapper<>();
-        wrapper.lambda().eq(Avatar::getName, originalFilename);
-        Avatar serviceOne = avatarService.getOne(wrapper);
-        if (serviceOne != null){
-            avatar.delete();
-            return ResultUtils.success(serviceOne.getUrl());
-        }
-        String url = "";
-        if (CollectionUtils.isNotEmpty(avatarList)) {
-            url = avatarList.get(0).getUrl();
-            avatar.delete();
-        }else {
-            url = "http://yujian-backend.treay.cn/api/file/" + fileUuid;
-        }
+        try {
+            // 将文件保存到指定位置
+            file.transferTo(avatar);
+            //获取文件的md5
+            String md5 = SecureUtil.md5(avatar);
+            //查询文件是否存在
+            QueryWrapper<Avatar> queryWrapper = new QueryWrapper<>();
+            queryWrapper.lambda().eq(Avatar::getMd5, md5);
+            // avatarList是uuid加密后与上传的文件相同的文件列表
+            List<Avatar> avatarList = avatarService.list(queryWrapper);
+            String url = "";
+            if (CollectionUtils.isNotEmpty(avatarList)) {
+                // 如果有相同文件则只在数据库中写入，并将传入的文件删除
+                url = avatarList.get(0).getUrl();
+                avatar.delete();
+            } else {
+                url = "http://yujian-backend.treay.cn/api/file/" + fileUuid;
+            }
 
-        //存到数据库
-        Avatar avatarFile = new Avatar();
-        avatarFile.setName(originalFilename);
-        avatarFile.setSize(size / 1024);
-        avatarFile.setType(type);
-        avatarFile.setUrl(url);
-        avatarFile.setMd5(md5);
-        avatarFile.setUserId(Long.MAX_VALUE);
-        avatarService.save(avatarFile);
-        // 返回文件路径或其他响应
-        return ResultUtils.success(url);
+            //存到数据库
+            Avatar avatarFile = new Avatar();
+            avatarFile.setName(originalFilename);
+            avatarFile.setSize(size / 1024);
+            avatarFile.setType(type);
+            avatarFile.setUrl(url);
+            avatarFile.setMd5(md5);
+            avatarService.save(avatarFile);
+            // 返回文件路径或其他响应
+            return ResultUtils.success(url);
+        }catch (IOException e) {
+            // 处理文件上传过程中的IO异常
+            avatar.delete();
+            log.error("File upload failed: ", e);
+            return ResultUtils.error(ErrorCode.SYSTEM_ERROR,"上传失败");
+        }
     }
 
+    /**
+     * 文件下载(当使用特定url访问时，会自动调用该方法，在浏览器上展示或下载文件)
+     * @param fileUUID
+     * @param response
+     * @throws IOException
+     */
     @GetMapping("/{fileUUID}")
     public void down(@PathVariable String fileUUID, HttpServletResponse response) throws IOException {
         //服务器写法

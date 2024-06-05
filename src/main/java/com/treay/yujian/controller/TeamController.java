@@ -8,7 +8,6 @@ import com.treay.yujian.common.BaseResponse;
 import com.treay.yujian.common.ErrorCode;
 import com.treay.yujian.common.ResultUtils;
 import com.treay.yujian.exception.BusinessException;
-import com.treay.yujian.model.dto.TeamQuery;
 import com.treay.yujian.model.request.*;
 import com.treay.yujian.service.TeamService;
 import com.treay.yujian.service.UserTeamService;
@@ -22,11 +21,9 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -50,16 +47,25 @@ public class TeamController {
     @Resource
     private UserTeamService userTeamService;
 
+    /**
+     * 创建队伍
+     * @param addTeamRequest
+     * @return
+     */
     @PostMapping("/add")
     public BaseResponse<Long> addTeam(@RequestBody AddTeamRequest addTeamRequest) {
         if (addTeamRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-//        User loginUser = userService.getLoginUser(addTeamRequest.getUserAccount(), addTeamRequest.getUuid());
         long result = teamService.addTeam(addTeamRequest);
         return ResultUtils.success(result);
     }
 
+    /**
+     * 更新队伍
+     * @param teamUpdateRequest
+     * @return
+     */
     @PostMapping("/update")
     public BaseResponse<Boolean> updateTeam(@RequestBody TeamUpdateRequest teamUpdateRequest) {
         if (teamUpdateRequest == null) {
@@ -76,6 +82,11 @@ public class TeamController {
         return ResultUtils.success(true);
     }
 
+    /**
+     * 通过id获取队伍
+     * @param id
+     * @return
+     */
     @GetMapping("/get")
     public BaseResponse<Team> getTeamById(long id) {
         if (id <= 0) {
@@ -88,14 +99,24 @@ public class TeamController {
         return ResultUtils.success(team);
     }
 
+    /**
+     * 队伍列表
+     * @param teamQueryRequest
+     * @return
+     */
     @GetMapping("/list")
-    public BaseResponse<List<TeamUserVO>> listTeams(TeamQueryRequest teamQueryRequest) {
+    public BaseResponse<List<TeamUserVO>> queryTeams(TeamQueryRequest teamQueryRequest) {
         User loginUser = userService.getLoginUser(teamQueryRequest.getUserAccount(), teamQueryRequest.getUuid());
         boolean isAdmin = userService.isAdmin(loginUser);
         List<TeamUserVO> teamList = teamService.queryTeams(teamQueryRequest,isAdmin);
         return ResultUtils.success(teamList);
     }
 
+    /**
+     * 队伍列表（分页）
+     * @param teamQueryRequest
+     * @return
+     */
     @GetMapping("/list/page")
     public BaseResponse<Page<Team>> listTeamsByPage(TeamQueryRequest teamQueryRequest) {
         if (teamQueryRequest == null){
@@ -108,6 +129,11 @@ public class TeamController {
         return ResultUtils.success(teamPage);
     }
 
+    /**
+     * 加入队伍
+     * @param teamJoinRequest
+     * @return
+     */
     @PostMapping("/join")
     public BaseResponse<Boolean> joinTeam(@RequestBody TeamJoinRequest teamJoinRequest) {
         if (teamJoinRequest == null){
@@ -117,6 +143,11 @@ public class TeamController {
         return ResultUtils.success(result);
     }
 
+    /**
+     * 退出队伍
+     * @param teamQuitRequest
+     * @return
+     */
     @PostMapping("/quit")
     public BaseResponse<Boolean> quitTeam(@RequestBody TeamQuitRequest teamQuitRequest) {
         if (teamQuitRequest == null) {
@@ -126,6 +157,9 @@ public class TeamController {
         return ResultUtils.success(result);
     }
 
+    /**
+     * 解散队伍
+     */
     @PostMapping("/disband")
     public BaseResponse<Boolean>  disbandTeam(@RequestBody TeamDisbandRequest teamDisbandRequest) {
         if (teamDisbandRequest == null){
@@ -147,6 +181,7 @@ public class TeamController {
         if (teamQueryRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+        // 判断是否为当前用户
         User loginUser = userService.getLoginUser(teamQueryRequest.getUserAccount(), teamQueryRequest.getUuid());
         teamQueryRequest.setUserId(loginUser.getId());
         List<TeamUserVO> teamList = teamService.queryTeams(teamQueryRequest,true);
@@ -177,6 +212,7 @@ public class TeamController {
             return ResultUtils.success(null);
         }
         teamQueryRequest.setIdList(idList);
+
         List<TeamUserVO> teamList = teamService.queryTeams(teamQueryRequest,true);
         return ResultUtils.success(teamList);
     }

@@ -59,7 +59,7 @@ public interface TeamService extends IService<Team> {
      * @param isAdmin
      * @return
      */
-    List<TeamUserVO> queryTeams(TeamQueryRequest teamQueryRequest, boolean isAdmin);
+    List<TeamUserVO> queryTeams(TeamQueryRequest teamQueryRequest);
 
     /**
      * 解散队伍
@@ -67,4 +67,26 @@ public interface TeamService extends IService<Team> {
      * @return
      */
     Boolean disbandTeam(TeamDisbandRequest teamDisbandRequest);
+
+
+    /**
+     * 获取我创建的队伍
+     * @param teamQueryRequest
+     * @return
+     */
+    List<TeamUserVO> listMyCreateTeams(TeamQueryRequest teamQueryRequest);
+
+    /**
+     * 获取我加入的队伍
+     * @param teamQueryRequest
+     * @return
+     */
+    List<TeamUserVO> listMyJoinTeams(TeamQueryRequest teamQueryRequest);
+
+    /**
+     * 根据关键词搜索队伍
+     * @param teamQueryRequest
+     * @return
+     */
+    List<TeamUserVO> searchTeams(TeamQueryRequest teamQueryRequest);
 }

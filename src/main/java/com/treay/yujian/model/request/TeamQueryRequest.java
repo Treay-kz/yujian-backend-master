@@ -18,6 +18,9 @@ public class TeamQueryRequest extends PageRequest {
 
     private Long id;
 
+    /**
+     * 我加入的队伍id列表
+     */
     private List<Long> idList;
 
     /**

@@ -3,6 +3,7 @@ package com.treay.yujian.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.treay.yujian.common.ErrorCode;
+import com.treay.yujian.common.ResultUtils;
 import com.treay.yujian.exception.BusinessException;
 import com.treay.yujian.mapper.TeamMapper;
 import com.treay.yujian.model.dto.TeamQuery;
@@ -195,7 +196,6 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
             }
         }
         long userId = loginUser.getId();
-        //分布式锁  todo  优化
         RLock lock = redissonClient.getLock("yujian:join_team:lock");
         try {
             //只有一个线程会获取锁
@@ -292,16 +292,14 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         }
         return userTeamService.remove(queryWrapper);
     }
-
-
-
     @Override
-    public List<TeamUserVO> queryTeams(TeamQueryRequest teamQueryRequest, boolean isAdmin) {
-//1. 从请求参数中取出队伍名称等查询条件，如果存在则作为查询条件
+    public List<TeamUserVO> queryTeams(TeamQueryRequest teamQueryRequest) {
+        //1. 从请求参数中取出队伍名称等查询条件，如果存在则作为查询条件
         //当前登录用户
         User loginUser = userService.getLoginUser(teamQueryRequest.getUserAccount(), teamQueryRequest.getUuid());
 
         QueryWrapper<Team> queryWrapper = new QueryWrapper<>();
+
         queryWrapper.lambda()
                 .eq(teamQueryRequest.getId() != null && teamQueryRequest.getId() > 0, Team::getId, teamQueryRequest.getId())
                 .in(!com.baomidou.mybatisplus.core.toolkit.CollectionUtils.isEmpty(teamQueryRequest.getIdList()), Team::getId, teamQueryRequest.getIdList())
@@ -316,7 +314,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
                     .or()
                     .like(Team::getDescription, teamQueryRequest.getSearchText());
         }
-
+        // 过期时间大于当前日期或永不过期的过期代码
         queryWrapper.lambda().and(qw -> qw.gt(Team::getExpireTime, new Date()).or().isNull(Team::getExpireTime));
 
         Integer status = teamQueryRequest.getStatus();
@@ -324,58 +322,16 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         if (statusEnum != null && (statusEnum.equals(TeamStatusEnum.PUBLIC) || statusEnum.equals(TeamStatusEnum.SECRET))) {
             queryWrapper.lambda().eq(Team::getStatus, status);
         }
-
-
-        List<Team> teamList = new ArrayList<>();
-        //传入的参数为私有
-        if (statusEnum != null && statusEnum.equals(TeamStatusEnum.PRIVATE)) {
-            //查询出当前登录用户创建的队伍
-            QueryWrapper<Team> teamQueryWrapper = new QueryWrapper<>();
-            Long loginUserId = loginUser.getId();
-            teamQueryWrapper.lambda().eq(Team::getUserId, loginUserId);
-            List<Team> createTeams = this.list(teamQueryWrapper);
-            List<Integer> createTeamStatus = new ArrayList<>();
-            List<Long> createTeamIds = new ArrayList<>();
-            createTeams.forEach(team -> {
-                createTeamIds.add(team.getId());
-                createTeamStatus.add(team.getStatus());
-            });
-            //不是管理员，且创建队伍不为空，且创建的队伍状态不包含私有，且参数为私有
-            if (!isAdmin
-                    && com.baomidou.mybatisplus.core.toolkit.CollectionUtils.isNotEmpty(createTeamStatus)
-                    && !createTeamStatus.contains(TeamStatusEnum.PRIVATE.getValue())) {
-                throw new BusinessException(ErrorCode.NO_AUTH, "无权限访问");
-            }
-            //不是管理员，且创建队伍不为空，且创建的队伍状态包含私有,且参数为私有
-            if (!isAdmin
-                    && com.baomidou.mybatisplus.core.toolkit.CollectionUtils.isNotEmpty(createTeamStatus)
-                    && createTeamStatus.contains(TeamStatusEnum.PRIVATE.getValue())) {
-                //遍历创建的私有队伍
-                for (Long createTeamId : createTeamIds) {
-                    Team createTeam = this.getTeamById(createTeamId);
-                    if (createTeam.getStatus() == 1) {
-                        teamList.add(createTeam);
-                    }
-                }
-            }
-            queryWrapper.lambda().eq(Team::getStatus, status);
-        }
-
-        //如果是管理员，可以查询私有的队伍
-        if (statusEnum != null && isAdmin && statusEnum.equals(TeamStatusEnum.PRIVATE)) {
-            queryWrapper.lambda().eq(Team::getStatus, status);
-        }
-
-        List<Team> teamList1 = this.list(queryWrapper);
+        List<Team> teamList= this.list(queryWrapper);
         //加入私有队伍
-        teamList1.addAll(teamList);
 
-        if (com.baomidou.mybatisplus.core.toolkit.CollectionUtils.isEmpty(teamList1)) {
+
+        if (CollectionUtils.isEmpty(teamList)) {
             return new ArrayList<>();
         }
         List<TeamUserVO> respTeamUserVO = new ArrayList<>();
-        //关联查询用户信息
-        for (Team team : teamList1) {
+        //关联查询用户信息并脱敏
+        for (Team team : teamList) {
             if (team.getExpireTime() == null || team.getExpireTime().after(new Date())) {
                 TeamUserVO teamUserVO = new TeamUserVO();
                 BeanUtils.copyProperties(team, teamUserVO);
@@ -408,6 +364,122 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         return respTeamUserVO;
     }
 
+
+
+    /**
+     * 获取我创建的队伍
+     * @param teamQueryRequest
+     * @return
+     */
+    @Override
+    public List<TeamUserVO> listMyCreateTeams(TeamQueryRequest teamQueryRequest) {
+        Long userId = teamQueryRequest.getUserId();
+        QueryWrapper<Team> queryWrapper = new QueryWrapper<>();
+        if (userId == null && userId <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"用户id错误");
+        }
+        queryWrapper.lambda().eq(Team::getUserId, teamQueryRequest.getUserId());
+
+        queryWrapper.lambda().and(qw -> qw.gt(Team::getExpireTime, new Date()).or().isNull(Team::getExpireTime));
+        List<Team> teamList = this.list(queryWrapper);
+        List<TeamUserVO> teamUserVO = getTeamUserVO(teamList, userId);
+        return teamUserVO;
+    }
+
+    /**
+     * 获取我加入的队伍
+     * @param teamQueryRequest
+     * @return
+     */
+    @Override
+    public List<TeamUserVO> listMyJoinTeams(TeamQueryRequest teamQueryRequest) {
+        Long userId = teamQueryRequest.getUserId();
+        QueryWrapper<Team> queryWrapper = new QueryWrapper<>();
+        if (CollectionUtils.isEmpty(teamQueryRequest.getIdList())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"队伍id不能为空");
+        }
+        queryWrapper.lambda().in(Team::getId, teamQueryRequest.getIdList());
+
+        queryWrapper.lambda().and(qw -> qw.gt(Team::getExpireTime, new Date()).or().isNull(Team::getExpireTime));
+        List<Team> teamList = this.list(queryWrapper);
+        List<TeamUserVO> teamUserVO = getTeamUserVO(teamList, userId);
+        return teamUserVO;
+    }
+
+    /**
+     * 根据关键词搜索队伍
+     * @param teamQueryRequest
+     * @return
+     */
+    @Override
+    public List<TeamUserVO> searchTeams(TeamQueryRequest teamQueryRequest) {
+        Long userId = teamQueryRequest.getUserId();
+        QueryWrapper<Team> queryWrapper = new QueryWrapper<>();
+        // 关键词查询
+        if (StringUtils.isNotBlank(teamQueryRequest.getSearchText())) {
+            queryWrapper.lambda()
+                    .like(Team::getName, teamQueryRequest.getSearchText())
+                    .or()
+                    .like(Team::getDescription, teamQueryRequest.getSearchText());
+        }
+        // 非过期队伍
+        queryWrapper.lambda().and(qw -> qw.gt(Team::getExpireTime, new Date()).or().isNull(Team::getExpireTime));
+        Integer status = teamQueryRequest.getStatus();
+        TeamStatusEnum statusEnum = TeamStatusEnum.getEnumByValue(status);
+        if (statusEnum != null && (statusEnum.equals(TeamStatusEnum.PUBLIC) || statusEnum.equals(TeamStatusEnum.SECRET))) {
+            queryWrapper.lambda().eq(Team::getStatus, status);
+        }
+        queryWrapper.lambda().in(Team::getId, teamQueryRequest.getIdList());
+        List<Team> teamList = this.list(queryWrapper);
+        List<TeamUserVO> teamUserVO = getTeamUserVO(teamList, userId);
+        return teamUserVO;
+    }
+
+    /**
+     * 获取脱敏后并且关联了队伍成员信息的TeamUserVO
+     * @param teamList
+     * @param userId
+     * @return
+     */
+    public  List<TeamUserVO>  getTeamUserVO(List<Team> teamList,Long userId){
+        List<TeamUserVO> resTeamUserVO = new ArrayList<>();
+        for (Team team : teamList) {
+            if (team.getExpireTime() == null || team.getExpireTime().after(new Date())) {
+                TeamUserVO teamUserVO = new TeamUserVO();
+                BeanUtils.copyProperties(team, teamUserVO);
+
+                ArrayList<User> userList = new ArrayList<>();
+                ArrayList<Long> memberId = new ArrayList<>();
+
+                Long teamId = team.getId();
+                QueryWrapper<UserTeam> userTeamQueryWrapper = new QueryWrapper<>();
+                userTeamQueryWrapper.lambda().eq(UserTeam::getTeamId, teamId);
+                List<UserTeam> list = userTeamService.list(userTeamQueryWrapper);
+                for (UserTeam userTeam : list) {
+                    User user = userService.getById(userTeam.getUserId());
+                    User safetyUser = userService.getSafetyUser(user);
+                    userList.add(safetyUser);
+                    //所有加入队伍的成员id
+                    memberId.add(user.getId());
+                    teamUserVO.setUserList(userList);
+                }
+                User userById = userService.getById(team.getUserId());
+                teamUserVO.setCreateUsername(userById.getUsername());
+                teamUserVO.setCreateAvatarUrl(userById.getAvatarUrl());
+                teamUserVO.setCreateUser(userById);
+                teamUserVO.setMemberId(memberId);
+                teamUserVO.setIsJoin(memberId.contains(userId));
+                resTeamUserVO.add(teamUserVO);
+            }
+        }
+        return resTeamUserVO;
+    }
+
+    /**
+     * 解散队伍
+     * @param teamDisbandRequest
+     * @return
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Boolean disbandTeam(TeamDisbandRequest teamDisbandRequest) {
@@ -455,8 +527,6 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         }
         return team;
     }
-
-
 
     /**
      * 获取某队伍当前人数

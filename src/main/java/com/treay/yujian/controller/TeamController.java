@@ -21,6 +21,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
+import javax.websocket.server.PathParam;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -88,7 +89,7 @@ public class TeamController {
      * @return
      */
     @GetMapping("/get")
-    public BaseResponse<Team> getTeamById(long id) {
+    public BaseResponse<Team> getTeamById(@RequestParam("id") long id) {
         if (id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -100,15 +101,18 @@ public class TeamController {
     }
 
     /**
-     * 队伍列表
+     * 根据关键词搜索队伍
      * @param teamQueryRequest
      * @return
      */
     @GetMapping("/list")
     public BaseResponse<List<TeamUserVO>> queryTeams(TeamQueryRequest teamQueryRequest) {
         User loginUser = userService.getLoginUser(teamQueryRequest.getUserAccount(), teamQueryRequest.getUuid());
-        boolean isAdmin = userService.isAdmin(loginUser);
-        List<TeamUserVO> teamList = teamService.queryTeams(teamQueryRequest,isAdmin);
+        if (loginUser == null) {
+            throw new BusinessException(ErrorCode.NO_AUTH,"无权限");
+        }
+//        List<TeamUserVO> teamList = teamService.searchTeams(teamQueryRequest);
+        List<TeamUserVO> teamList = teamService.queryTeams(teamQueryRequest);
         return ResultUtils.success(teamList);
     }
 
@@ -184,7 +188,9 @@ public class TeamController {
         // 判断是否为当前用户
         User loginUser = userService.getLoginUser(teamQueryRequest.getUserAccount(), teamQueryRequest.getUuid());
         teamQueryRequest.setUserId(loginUser.getId());
-        List<TeamUserVO> teamList = teamService.queryTeams(teamQueryRequest,true);
+
+//        List<TeamUserVO> teamList = teamService.listMyCreateTeams(teamQueryRequest);
+        List<TeamUserVO> teamList = teamService.queryTeams(teamQueryRequest);
         return ResultUtils.success(teamList);
     }
 
@@ -200,6 +206,7 @@ public class TeamController {
         if (teamQueryRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+        // 去关系表中获取teamIdList
         User loginUser = userService.getLoginUser(teamQueryRequest.getUserAccount(), teamQueryRequest.getUuid());
         Long userId = loginUser.getId();
         QueryWrapper<UserTeam> queryWrapper = new QueryWrapper<>();
@@ -212,8 +219,8 @@ public class TeamController {
             return ResultUtils.success(null);
         }
         teamQueryRequest.setIdList(idList);
-
-        List<TeamUserVO> teamList = teamService.queryTeams(teamQueryRequest,true);
+//        List<TeamUserVO> teamList = teamService.listMyJoinTeams(teamQueryRequest);
+        List<TeamUserVO> teamList = teamService.queryTeams(teamQueryRequest);
         return ResultUtils.success(teamList);
     }
 }

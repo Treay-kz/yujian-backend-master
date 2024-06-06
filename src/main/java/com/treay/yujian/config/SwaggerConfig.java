@@ -44,7 +44,7 @@ public class SwaggerConfig {
         return new ApiInfoBuilder()
                 .title("遇见伙伴匹配系统")
                 .description("遇见伙伴匹配系统接口文档")
-                .termsOfServiceUrl("https://github.com/liyupi")
+                .termsOfServiceUrl("https://www.treay.cn/api")
                 .contact(new Contact("Treay_kz","https://treay.cn/","1679924491@qq.com"))
                 .version("1.0")
                 .build();

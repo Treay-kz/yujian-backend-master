@@ -29,6 +29,8 @@ import javax.annotation.Resource;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
+import static com.treay.yujian.constant.RedisConstant.JOIN_TEAM_KEY;
+
 /**
  * 队伍服务实现类
  *
@@ -162,10 +164,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
 
 
     @Override
-    public Boolean joinTeam(TeamJoinRequest teamJoinRequest) {
-        User loginUser = userService.getLoginUser(teamJoinRequest.getUserAccount(), teamJoinRequest.getUuid());
-
-        Long teamId = teamJoinRequest.getTeamId();
+    public Boolean joinTeam(User loginUser, Long teamId,String password) {
 
         if (teamId == null || teamId <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -183,7 +182,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "禁止加入私有的队伍");
         }
 
-        String password = teamJoinRequest.getPassword();
+
         if (TeamStatusEnum.SECRET.equals(teamStatusEnum)) {
             if (StringUtils.isBlank(password)) {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "必须要有密码才能加入");
@@ -196,7 +195,8 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
             }
         }
         long userId = loginUser.getId();
-        RLock lock = redissonClient.getLock("yujian:join_team:lock");
+        // 分布式锁保证幂等
+        RLock lock = redissonClient.getLock(JOIN_TEAM_KEY);
         try {
             //只有一个线程会获取锁
             while (true) {

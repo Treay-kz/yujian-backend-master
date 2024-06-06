@@ -428,8 +428,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
                 continue;
             }
             // 处理其他用户标签
-            List<String> userTagList = gson.fromJson(userTags, new TypeToken<List<String>>() {
-            }.getType());
+            List<String> userTagList = gson.fromJson(userTags, new TypeToken<List<String>>() {}.getType());
             // 计算相似度
             long distance = AlgorithmUtils.minDistance(tagList, userTagList);
             list.add(new Pair<>(user, distance));
@@ -457,7 +456,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             finalUserList.add(userIdUserListMap.get(userId).get(0));
         }
 
-        //写缓存 查出来最匹配的用户，进行存储，并设置过期时间
+        //写缓存
         try {
             redisTemplate.opsForValue().set(key, finalUserList, 5, TimeUnit.MINUTES);
         } catch (Exception e) {
@@ -755,89 +754,70 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     public boolean agreeFriend(AddFriendRequest addFriendRequest) {
         Long senderId = addFriendRequest.getSenderId();
         Long recipientId = addFriendRequest.getRecipientId();
+        // 校验发件人和收件人是否存在
+        validateUsersExist(senderId, recipientId);
         User sender = this.getById(senderId);
         User recipient = this.getById(recipientId);
-        // 校验发件人和收件人是否存在
-        if (sender == null || recipient == null) {
-            throw  new BusinessException(ErrorCode.PARAMS_ERROR,"发件人或收件人不存在");
-        }
 
-        // 再次校验是否已经是好友
+        // 校验是否已经是好友
         Boolean alreadyFriends = checkIfAlreadyFriends(sender, recipientId);
         Boolean alreadyFriends1 = checkIfAlreadyFriends(recipient, senderId);
-
         if (alreadyFriends && alreadyFriends1) {
             return true;
         }
-
         // 修改消息通知表
-        QueryWrapper<Notice> queryWrapper1 = new QueryWrapper<>();
-        queryWrapper1.lambda().eq(Notice::getSenderId, senderId).eq(Notice::getRecipientId, recipientId).eq(Notice::getAddFriendStatus, AddFriendStatusEnum.ADDING.getValue());
-        Notice notice1 = noticeService.getOne(queryWrapper1);
-        if (notice1 != null) {
-            notice1.setAddFriendStatus(AddFriendStatusEnum.ADD_SUCCESS.getValue());
-            boolean updateNotice1 = noticeService.updateById(notice1);
-            if (!updateNotice1) {
-                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "修改通知表失败");
-            }
-        }
-
-        QueryWrapper<Notice> queryWrapper2 = new QueryWrapper<>();
-        queryWrapper2.lambda().eq(Notice::getRecipientId, senderId).eq(Notice::getSenderId, recipientId).eq(Notice::getAddFriendStatus, AddFriendStatusEnum.ADDING.getValue());
-        Notice notice2 = noticeService.getOne(queryWrapper2);
-        if (notice2 != null){
-            notice2.setAddFriendStatus(AddFriendStatusEnum.ADD_SUCCESS.getValue());
-            boolean updateNotice2 = noticeService.updateById(notice2);
-            if (!updateNotice2) {
-                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "修改通知表失败");
-            }
-        }
-
-        // 在发送人好友列表添加上对方的id
-        addFriendList(sender, recipientId);
-        // 在接收人好友列表添加上对方的id
-        addFriendList(recipient, senderId);
-
+        processFriendRequest(addFriendRequest, AddFriendStatusEnum.ADD_SUCCESS.getValue());
+        // 在好友列表互相添加id
+        addFriendToLists(addFriendRequest.getSenderId(), addFriendRequest.getRecipientId());
         return true;
-
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean rejectFriend(AddFriendRequest addFriendRequest) {
-        Long senderId = addFriendRequest.getSenderId();
-        Long recipientId = addFriendRequest.getRecipientId();
         // 校验发件人和收件人是否存在
-        if (senderId == null || recipientId == null) {
-            throw  new BusinessException(ErrorCode.PARAMS_ERROR,"发件人或收件人不存在");
-        }
-
+        validateUsersExist(addFriendRequest.getSenderId(), addFriendRequest.getRecipientId());
         // 修改消息通知表
-        QueryWrapper<Notice> queryWrapper1 = new QueryWrapper<>();
-        queryWrapper1.lambda().eq(Notice::getSenderId, senderId).eq(Notice::getRecipientId, recipientId).eq(Notice::getAddFriendStatus, AddFriendStatusEnum.ADDING.getValue());
-        Notice notice1 = noticeService.getOne(queryWrapper1);
-        if (notice1 != null) {
-            notice1.setAddFriendStatus(AddFriendStatusEnum.ADD_ERROR.getValue());
-            boolean updateNotice1 = noticeService.updateById(notice1);
-            if (!updateNotice1) {
-                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "修改通知表失败");
-            }
-        }
-
-
-        QueryWrapper<Notice> queryWrapper2 = new QueryWrapper<>();
-        queryWrapper2.lambda().eq(Notice::getRecipientId, senderId).eq(Notice::getSenderId, recipientId).eq(Notice::getAddFriendStatus, AddFriendStatusEnum.ADDING.getValue());
-        Notice notice2 = noticeService.getOne(queryWrapper2);
-        if (notice2 != null) {
-            notice2.setAddFriendStatus(AddFriendStatusEnum.ADD_ERROR.getValue());
-            boolean updateNotice2 = noticeService.updateById(notice2);
-            if (!updateNotice2) {
-                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "修改通知表失败");
-            }
-        }
+        processFriendRequest(addFriendRequest, AddFriendStatusEnum.ADD_ERROR.getValue());
         return true;
 
     }
 
+    private void validateUsersExist(Long senderId, Long recipientId) {
+        User sender = this.getById(senderId);
+        User recipient = this.getById(recipientId);
+        if (sender == null || recipient == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "发件人或收件人不存在");
+        }
+    }
+
+    // 提取公共方法处理通知
+    private void processFriendRequest(AddFriendRequest request, int newStatus) {
+        updateNoticeStatus(request.getSenderId(), request.getRecipientId(), newStatus);
+        updateNoticeStatus(request.getRecipientId(), request.getSenderId(), newStatus);
+    }
+
+    // 更新通知表状态
+    private void updateNoticeStatus(Long senderId, Long recipientId, int newStatus) {
+        QueryWrapper<Notice> queryWrapper = new QueryWrapper<>();
+        queryWrapper.lambda()
+                .eq(Notice::getSenderId, senderId)
+                .eq(Notice::getRecipientId, recipientId)
+                .eq(Notice::getAddFriendStatus, AddFriendStatusEnum.ADDING.getValue());
+        Notice notice = noticeService.getOne(queryWrapper);
+        if (notice != null) {
+            notice.setAddFriendStatus(newStatus);
+            if (!noticeService.updateById(notice)) {
+                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "更新失败");
+            }
+        }
+    }
+
+    // 添加好友到双方的好友列表
+    private void addFriendToLists(Long senderId, Long recipientId) {
+        addFriendList(this.getById(senderId), recipientId);
+        addFriendList(this.getById(recipientId), senderId);
+    }
     @Override
     public List<User> listFriend(User loginUser) {
         // 最新数据

@@ -9,4 +9,6 @@ public interface RedisConstant {
     public static final String SEND_MESSAGE_KEY = "yujian:user:sendMessage:";
     public static final String MESSAGE_KEY = "yujian:user:message:";
 
+    public static final String JOIN_TEAM_KEY = "yujian:join_team:lock";
+
 }

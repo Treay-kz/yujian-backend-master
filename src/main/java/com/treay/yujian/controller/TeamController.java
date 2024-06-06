@@ -143,7 +143,8 @@ public class TeamController {
         if (teamJoinRequest == null){
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        Boolean result = teamService.joinTeam(teamJoinRequest);
+        User loginUser = userService.getLoginUser(teamJoinRequest.getUserAccount(), teamJoinRequest.getUuid());
+        Boolean result = teamService.joinTeam(loginUser,teamJoinRequest.getTeamId(),teamJoinRequest.getPassword());
         return ResultUtils.success(result);
     }
 

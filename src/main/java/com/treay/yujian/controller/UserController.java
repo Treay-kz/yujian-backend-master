@@ -302,7 +302,7 @@ public class UserController {
         if (pageSize <= 0 || pageNum <= 0 || StringUtils.isEmpty(userAccount) || StringUtils.isEmpty(uuid)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        // 这一句的意思是判断是否为当前用户，
+        // 判断是否为当前用户，
         User loginUser = userService.getLoginUser(userAccount, uuid);
         String key = USER_SEARCH_KEY + loginUser.getId();
 

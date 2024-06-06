@@ -38,11 +38,11 @@ public interface TeamService extends IService<Team> {
 
     /**
      * 加入队伍
-     *
-     * @param teamJoinRequest
+     * @param loginUser
+     * @param teamId
      * @return
      */
-    Boolean joinTeam(TeamJoinRequest teamJoinRequest);
+    Boolean joinTeam(User loginUser, Long teamId,String password);
 
     /**
      * 退出队伍
@@ -56,7 +56,6 @@ public interface TeamService extends IService<Team> {
     /**
      * 搜索队伍
      * @param teamQueryRequest
-     * @param isAdmin
      * @return
      */
     List<TeamUserVO> queryTeams(TeamQueryRequest teamQueryRequest);

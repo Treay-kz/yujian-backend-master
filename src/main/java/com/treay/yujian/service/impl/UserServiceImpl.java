@@ -478,6 +478,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         if (StringUtils.isEmpty(email)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "email为空");
         }
+        Pattern emailValidPattern = Pattern.compile("[a-zA-Z0-9]+@[A-Za-z0-9]+\\.[a-z0-9]");
+        Matcher emailMatch = emailValidPattern.matcher(email);
+        if (!emailMatch.find()) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "邮箱格式错误");
+        }
         String code = generateValidateCode(6).toString();
         RLock lock = redissonClient.getLock(MESSAGE_KEY + email);
         try {
@@ -718,15 +723,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class)//Spring事务管理，保持数据库数据一致性
     public Boolean deleteFriend(DeleteFriendRequest deleteFriendRequest) {
+        //从DeleteFriendRequest对象中提取发送者和接收者（即被删除的好友）的ID， 然后通过这些ID从系统中获取相应的用户信息
         Long senderId = deleteFriendRequest.getId();
         Long recipientId = deleteFriendRequest.getDeleteId();
         User sender = this.getById(senderId);
         User recipient = this.getById(recipientId);
         if (sender == null || recipient == null) {
             throw  new BusinessException(ErrorCode.PARAMS_ERROR,"发件人或收件人不存在");
-        }
+        }//因为前端发的请求不一定都是合法的，请求是可以构造的
 
         //删除好友，修改消息通知表的好友状态为添加失败
         QueryWrapper<Notice> queryWrapper = new QueryWrapper<>();

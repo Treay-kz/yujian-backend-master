@@ -62,10 +62,11 @@ public interface TeamService extends IService<Team> {
 
     /**
      * 解散队伍
-     * @param teamDisbandRequest
+     * @param loginUser
+     * @param teamId
      * @return
      */
-    Boolean disbandTeam(TeamDisbandRequest teamDisbandRequest);
+    Boolean disbandTeam(User loginUser,Long teamId);
 
 
     /**

@@ -56,20 +56,26 @@ public class UserController {
      * @param addFriendRequest
      * @return
      */
+    //@PostMapping：处理HTTP POST请求，一般用于在服务器上创建资源（用户注册）   与 getmapping 一样，规定前端请求类型为 post
+    //@RequestBody： ：将HTTP请求的body内容绑定到上参数。具体体现为接收 JSON、xml 格式的数据将其转化为 Java 对象
+    //一般用于规定 controller 层的所有方法以 json 格式的数据返回
     @PostMapping("/friend/add")
     public BaseResponse<Boolean> addFriend(@RequestBody AddFriendRequest addFriendRequest) {
         if (addFriendRequest == null) {
+            //  用于处理应用程序中的错误
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-
+        // 根据AddFriendRequest对象中的uuid获取一个key，并使用该key从Redis中获取与用户账号对应的User对象。如果获取的User对象为null，
+        // 说明用户未登录，此时会抛出一个带有错误代码NOT_LOGIN的BusinessException异常。
         String key = TOKEN_KEY + addFriendRequest.getUuid();
         User user = (User) redisTemplate.opsForHash().get(key, addFriendRequest.getUserAccount());
         if (user == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN);
         }
+        // 调用userService的addFriend方法来处理添加好友的业务逻辑，返回一个Boolean类型的结果。
         Boolean result = userService.addFriend(addFriendRequest);
         return ResultUtils.success(result);
-    }
+    }// 整段代码通过验证请求参数、用户登录状态，并调用相应的服务方法来实现添加好友功能
 
     /**
      * 删除好友
@@ -92,19 +98,23 @@ public class UserController {
      */
     @PostMapping("/friend/agree")
     public BaseResponse<Boolean> agreeFriend(@RequestBody AddFriendRequest addFriendRequest) {
+        // 检查传入的AddFriendRequest参数是否为null
         if (addFriendRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+        // 调用userService的getLoginUser方法来验证用户的登录状态
+        // 根据传入的userAccount和uuid参数在后台获取对应的登录用户信息并赋值给loginUser变量
         User loginUser = userService.getLoginUser(addFriendRequest.getUserAccount(), addFriendRequest.getUuid());
         if (loginUser == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN, "未登录");
         }
+        // 调用userService的agreeFriend方法来处理同意好友请求的业务逻辑
         boolean agree = userService.agreeFriend(addFriendRequest);
         if (!agree) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "同意好友申请失败");
         }
         return ResultUtils.success(agree);
-    }
+    }// 这段代码整个流程中检查了请求参数、用户登录状态以及同意好友请求的结果
 
     /**
      * 拒绝好友申请
@@ -116,6 +126,8 @@ public class UserController {
         if (addFriendRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+        //调用userService的getLoginUser方法来验证用户的登录状态
+        // 根据传入的userAccount和uuid参数在后台获取对应的登录用户信息并赋值给loginUser变量
         User loginUser = userService.getLoginUser(addFriendRequest.getUserAccount(), addFriendRequest.getUuid());
         if (loginUser == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN, "未登录");
@@ -125,7 +137,7 @@ public class UserController {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "拒绝好友申请失败");
         }
         return ResultUtils.success(true);
-    }
+    }//处理拒绝好友请求的逻辑，整体流程包括参数验证、用户登录状态检查、拒绝好友请求的处理以及返回统一格式的处理结果
 
     /**
      * 获取好友列表

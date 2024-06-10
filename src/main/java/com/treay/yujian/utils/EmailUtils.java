@@ -19,11 +19,6 @@ public class EmailUtils {
 
     public static void sendEmail(String email,String authCode) throws MessagingException {
 
-        Pattern emailValidPattern = Pattern.compile("[a-zA-Z0-9]+@[A-Za-z0-9]+\\.[a-z0-9]");
-        Matcher emailMatch = emailValidPattern.matcher(email);
-        if (!emailMatch.find()) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "邮箱格式错误");
-        }
 
         // 创建Properties 类用于记录邮箱的一些属性
         Properties props = new Properties();

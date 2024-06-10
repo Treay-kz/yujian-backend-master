@@ -54,12 +54,14 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
     @Transactional(rollbackFor = Exception.class)
     public long addTeam(AddTeamRequest addTeamRequest) {
         // 2. 是否登录，未登录不允许创建
+        //通过userService来判断用户是否登录，如果未登录则抛出未登录的异常。
         User loginUser = userService.getLoginUser(addTeamRequest.getUserAccount(), addTeamRequest.getUuid());
         if (loginUser == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN);
         }
         final long userId = loginUser.getId();
         // 3. 校验信息
+        //对请求参数进行校验，包括队伍人数、队伍标题、队伍描述、队伍状态和密码等。如果不符合要求，则抛出相应的参数错误的异常
         //   1. 队伍人数 > 1 且 <= 20
         int maxNum = Optional.ofNullable(addTeamRequest.getMaxNum()).orElse(0);
         if (maxNum < 1 || maxNum > 20) {
@@ -93,7 +95,8 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         if (new Date().after(expireTime)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "超时时间 > 当前时间");
         }
-        // 7. 校验用户最多创建 5 个队伍
+        // 7. 校验通过后，创建一个Team对象，将请求参数复制给这个对象。校验用户最多创建 5 个队伍
+        //使用QueryWrapper查询已有的队伍数量，判断用户创建的队伍数量是否超过5个。如果超过，则抛出参数错误的异常。
         Team team = new Team();
         BeanUtils.copyProperties(addTeamRequest, team);
 
@@ -243,41 +246,51 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class) // 声明该方法在执行时会开启事务，并且遇到异常时会回滚事务
     public Boolean quitTeam( User loginUser ,Long teamId) {
-
+        // getTeamById 方法获取队伍信息
         Team team = getTeamById(teamId);
 
         //查询是否加入队伍
+        // 创建了一个用于构建查询条件的QueryWrapper对象。
         QueryWrapper<UserTeam> queryWrapper = new QueryWrapper<>();
+        // 获取用户ID
         Long userId = loginUser.getId();
+        //通过lambda方法链式调用，设置查询条件，要求查询符合给定队伍ID和当前用户ID的记录。
         queryWrapper.lambda().eq(UserTeam::getTeamId, teamId).eq(UserTeam::getUserId, userId);
         long count = userTeamService.count(queryWrapper);
-        //没加入队伍直接抛异常
+        // 如果记录数量为0，即当前用户未加入该队伍，则抛出业务异常，提示用户未加入队伍。
         if (count == 0) {
             throw new BusinessException(ErrorCode.NULL_ERROR, "未加入队伍");
         }
 
+        // 查询队伍中的成员列表
+        //  调用hasJoinTeamUser方法获取当前队伍中的成员列表。
         List<UserTeam> userTeams = this.hasJoinTeamUser(teamId);
-        //队伍只剩下一人，删除队伍关系，删除队伍
+        // 如果队伍中只剩下一人，删除队伍关系，并删除队伍
         if (userTeams.size() == 1) {
+            // 删除队伍
             this.removeById(teamId);
         } else {
-            //队伍人数大于一人
-            //如果是队长退出则将队伍创建人转移给第二加入的成员
+            // 如果队伍中有多人
+            // 如果退出的是队长，则将队伍创建人转移给第二个加入的成员
             if (Objects.equals(team.getUserId(), userId)) {
                 Team tempTeam = new Team();
+                // 设置队伍ID
                 tempTeam.setId(teamId);
+                // 按加入时间排序
                 userTeams.sort(Comparator.comparing(UserTeam::getJoinTime));
+                // 将队伍创建人设置为第二个加入的成员
                 tempTeam.setUserId(userTeams.get(1).getUserId());
-                //更新队伍队长
+                // 更新队伍信息，将队长转移给第二个加入的成员
                 boolean result = this.updateById(tempTeam);
                 if (!result) {
                     throw new BusinessException(ErrorCode.SYSTEM_ERROR, "更新队长失败");
                 }
             }
-            //如果不是队长直接退出队伍，删除用户-队伍关系
+            // 如果退出的不是队长，则直接退出队伍，删除用户-队伍关系
         }
+        // 删除用户-队伍关系
         return userTeamService.remove(queryWrapper);
     }
     @Override
@@ -285,66 +298,90 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         //1. 从请求参数中取出队伍名称等查询条件，如果存在则作为查询条件
         //当前登录用户
         User loginUser = userService.getLoginUser(teamQueryRequest.getUserAccount(), teamQueryRequest.getUuid());
+        // 构建查询包装器
         QueryWrapper<Team> queryWrapper = new QueryWrapper<>();
 
+        // 动态SQL构建，根据不同的查询条件进行过滤
         queryWrapper.lambda()
-                .in(!CollectionUtils.isEmpty(teamQueryRequest.getIdList()), Team::getId, teamQueryRequest.getIdList())
-                .eq(teamQueryRequest.getUserId() != null && teamQueryRequest.getUserId() > 0, Team::getUserId, teamQueryRequest.getUserId());
-
+                //如果 teamQueryRequest.getId() 不为 null 并且大于 0，则添加一个等于条件，查询 Team 表中的 id 字段等于 teamQueryRequest.getId()。
+                .eq(teamQueryRequest.getId() != null && teamQueryRequest.getId() > 0, Team::getId, teamQueryRequest.getId()) // 根据ID查询
+                //如果 teamQueryRequest.getIdList() 不为空，则添加一个 in 条件，查询 Team 表中的 id 字段是否在 teamQueryRequest.getIdList() 列表中。
+                //teamQueryRequest.getIdList() IS NOT NULL AND id IN (teamQueryRequest.getIdList())
+                .in(!CollectionUtils.isEmpty(teamQueryRequest.getIdList()), Team::getId, teamQueryRequest.getIdList())// 根据teamId列表查询（我加入的）
+                //如果 teamQueryRequest.getUserId() 不为 null 并且大于 0，则添加一个等于条件，查询 Team 表中的 userId 字段等于 teamQueryRequest.getUserId()。
+                //teamQueryRequest.getUserId() IS NOT NULL AND teamQueryRequest.getUserId() > 0 AND userId = teamQueryRequest.getUserId()
+                .eq(teamQueryRequest.getUserId() != null && teamQueryRequest.getUserId() > 0, Team::getUserId, teamQueryRequest.getUserId());// 根据创建者ID查询
+        // 如果存在搜索文本，对名称和描述进行模糊查询
         if (StringUtils.isNotBlank(teamQueryRequest.getSearchText())) {
             queryWrapper.lambda()
+                    //分别查询 Team 表中的 name 和 description 字段是否包含 teamQueryRequest.getSearchText()
+                    //teamQueryRequest.getSearchText() IS NOT NULL AND (name LIKE '%teamQueryRequest.getSearchText%' OR description LIKE '%teamQueryRequest.getSearchText%')
                     .like(Team::getName, teamQueryRequest.getSearchText())
                     .or()
                     .like(Team::getDescription, teamQueryRequest.getSearchText());
         }
-        // 过期时间大于当前日期或永不过期的队伍
+        // 过滤未过期或永久有效的队伍
+        //WHERE expireTime > CURRENT_TIMESTAMP OR expireTime IS NULL; 查询Team表中expireTime字段大于当前时间或者为空的记录
         queryWrapper.lambda().and(qw -> qw.gt(Team::getExpireTime, new Date()).or().isNull(Team::getExpireTime));
 
-        // 查询加密或公开的队伍
+        // 如果状态有效且为公开或秘密，进行状态过滤
+        // 从 teamQueryRequest 对象中获取状态字段的值
         Integer status = teamQueryRequest.getStatus();
+        // 使用 TeamStatusEnum 枚举类中的静态方法 getEnumByValue 将整数类型的 status 转换成对应的枚举类型
         TeamStatusEnum statusEnum = TeamStatusEnum.getEnumByValue(status);
+        // 检查 statusEnum 是否为非空，并且它的值是 PUBLIC 或者 SECRET
         if (statusEnum != null && (statusEnum.equals(TeamStatusEnum.PUBLIC) || statusEnum.equals(TeamStatusEnum.SECRET))) {
+            // 如果状态是 PUBLIC 或 SECRET，那么在 queryWrapper 中添加一个查询条件
             queryWrapper.lambda().eq(Team::getStatus, status);
         }
-
+        // 执行查询获取队伍列表
         List<Team> teamList= this.list(queryWrapper);
-
+        // 如果没有查询到任何队伍，直接返回空列表
         if (CollectionUtils.isEmpty(teamList)) {
             return new ArrayList<>();
         }
-
+        // 初始化一个List<TeamUserVO>类型的列表respTeamUserVO，用于存储最终要返回给前端的队伍信息
         List<TeamUserVO> respTeamUserVO = new ArrayList<>();
-        // 关联查询用户信息并脱敏  根据每个队伍id查所有加入这个队伍的用户id，再根据用户id查
+        // 关联查询用户信息并脱敏遍历队伍，构建响应数据  根据每个队伍id查所有加入这个队伍的用户id，再根据用户id查
         for (Team team : teamList) {
+            // 过滤已过期的队伍
             if (team.getExpireTime() == null || team.getExpireTime().after(new Date())) {
+                // 构建VO对象并复制基础信息
                 TeamUserVO teamUserVO = new TeamUserVO();
                 BeanUtils.copyProperties(team, teamUserVO);
+                // 获取队伍成员信息并脱敏
                 ArrayList<User> userList = new ArrayList<>();
                 ArrayList<Long> memberId = new ArrayList<>();
                 Long teamId = team.getId();
                 QueryWrapper<UserTeam> userTeamQueryWrapper = new QueryWrapper<>();
-                userTeamQueryWrapper.lambda().eq(UserTeam::getTeamId, teamId);
+                userTeamQueryWrapper.lambda().eq(UserTeam::getTeamId, teamId);//查询条件
+                //调用userTeamService.list(userTeamQueryWrapper)方法执行查询，获取与当前团队相关的所有UserTeam记录列表。
                 List<UserTeam> list = userTeamService.list(userTeamQueryWrapper);
                 for (UserTeam userTeam : list) {
+                    //使用userService.getById(userTeam.getUserId())方法根据UserTeam对象中的userId获取完整的用户信息。
                     User user = userService.getById(userTeam.getUserId());
-                    User safetyUser = userService.getSafetyUser(user);
+                    User safetyUser = userService.getSafetyUser(user); // 脱敏处理
                     userList.add(safetyUser);
 
                     //所有加入队伍的成员id
                     memberId.add(user.getId());
                     teamUserVO.setUserList(userList);
                 }
+                // 设置创建者信息
                 User userById = userService.getById(team.getUserId());
                 teamUserVO.setCreateUsername(userById.getUsername());
                 teamUserVO.setCreateAvatarUrl(userById.getAvatarUrl());
                 teamUserVO.setCreateUser(userById);
+                // 设置成员ID列表
                 teamUserVO.setMemberId(memberId);
-                Long userId = loginUser.getId();
+                // 判断当前用户是否已加入队伍
+                Long userId = loginUser.getId(); //获取当前登录用户的ID
                 teamUserVO.setIsJoin(memberId.contains(userId));
+                // 添加到响应列表
                 respTeamUserVO.add(teamUserVO);
             }
-
         }
+        // 返回最终的响应数据
         return respTeamUserVO;
     }
 
@@ -461,37 +498,35 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
 
     /**
      * 解散队伍
-     * @param teamDisbandRequest
+     * @param loginUser
+     * @param teamId
      * @return
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Boolean disbandTeam(TeamDisbandRequest teamDisbandRequest) {
-        if (teamDisbandRequest == null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
-
-        //校验队伍是否存在
-        Long teamId = teamDisbandRequest.getTeamId();
+    public Boolean disbandTeam(User loginUser,Long teamId) {
+        // 根据队伍ID获取队伍信息
         Team team = getTeamById(teamId);
-
-        //当前用户
-        String userAccount = teamDisbandRequest.getUserAccount();
-        String uuid = teamDisbandRequest.getUuid();
-        User loginUser = userService.getLoginUser(userAccount, uuid);
-
+        // 验证当前用户是否是队长，若不是则抛出权限异常
+        // 检查当前用户是否是队伍的队长
         if (!team.getUserId().equals(loginUser.getId())) {
+            // 抛出无权限的业务异常
             throw new BusinessException(ErrorCode.NO_AUTH, "禁止访问");
         }
 
         //移除所有加入队伍的关系
+        // 创建查询条件
         QueryWrapper<UserTeam> queryWrapper = new QueryWrapper<>();
+        // 设置查询条件，找到所有加入该队伍的关系
         queryWrapper.lambda().eq(UserTeam::getTeamId, teamId);
+        // 调用service移除符合条件的关系
         boolean remove = userTeamService.remove(queryWrapper);
+        // 检查关系是否成功移除
         if (!remove) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "删除队伍失败");
         }
 
+        // 删除队伍信息并返回删除结果
         return this.removeById(teamId);
     }
 

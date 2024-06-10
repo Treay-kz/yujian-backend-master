@@ -68,8 +68,7 @@ public class UserController {
         }
         // 根据AddFriendRequest对象中的uuid获取一个key，并使用该key从Redis中获取与用户账号对应的User对象。如果获取的User对象为null，
         // 说明用户未登录，此时会抛出一个带有错误代码NOT_LOGIN的BusinessException异常。
-        String key = TOKEN_KEY + addFriendRequest.getUuid();
-        User user = (User) redisTemplate.opsForHash().get(key, addFriendRequest.getUserAccount());
+        User user =  userService.getLoginUser(addFriendRequest.getUserAccount(), addFriendRequest.getUuid());
         if (user == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN);
         }
@@ -155,6 +154,9 @@ public class UserController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         User loginUser = userService.getLoginUser(currentUserRequest.getUserAccount(), currentUserRequest.getUuid());
+        if (loginUser == null) {
+            throw new BusinessException(ErrorCode.NO_AUTH, "未登录");
+        }
         List<User> friendList = userService.listFriend(loginUser);
         return ResultUtils.success(friendList);
     }
@@ -344,10 +346,11 @@ public class UserController {
             return ResultUtils.success(userPage);
         }
 
-        // 从数据库中获取 用户列表（前20条）
+        // 从数据库中获取所有用户列表
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         queryWrapper.lambda().orderByDesc(User::getAddCount);
         userList = userService.list(queryWrapper);
+
 
         // 过滤当前登录用户
         userList = userList
@@ -384,6 +387,9 @@ public class UserController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         User loginUser = userService.getLoginUser(userDTO.getCurrentUserAccount(), userDTO.getUuid());
+        if (loginUser == null) {
+            throw new BusinessException(ErrorCode.NO_AUTH,"未登录");
+        }
         int result = userService.updateUser(userDTO, loginUser);
         return ResultUtils.success(result);
     }
@@ -401,6 +407,9 @@ public class UserController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         User loginUser = userService.getLoginUser(userDTO.getCurrentUserAccount(), userDTO.getUuid());
+        if (loginUser == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"未登录");
+        }
         int result = userService.updateTags(userDTO, loginUser);
         return ResultUtils.success(result);
     }
@@ -436,6 +445,9 @@ public class UserController {
         }
         int num = matchUserRequest.getNum();
         User loginUser = userService.getLoginUser(matchUserRequest.getUserAccount(), matchUserRequest.getUuid());
+        if (loginUser == null) {
+            throw new BusinessException(ErrorCode.NO_AUTH,"未登录");
+        }
         List<User> matchUser = userService.matchUsers(num, loginUser);
 
         return ResultUtils.success(matchUser);

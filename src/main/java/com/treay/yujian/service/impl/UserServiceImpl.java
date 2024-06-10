@@ -124,11 +124,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         if (!code.equals(sendMessageCode)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "验证码不匹配!");
         }
-
+        valueOperations.getOperations().delete(redisKey);
         // 账户不能重复
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         // 设置查询条件
-        queryWrapper.eq("userAccount", userAccount);
+        queryWrapper.lambda().eq(User::getAddCount, userAccount);
         // 查询数据库
         long count = userMapper.selectCount(queryWrapper);
         if (count > 0) {
@@ -269,6 +269,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         for (String tagName : byTagsRequest.getTagNameList()) {
             queryWrapper = queryWrapper.like("tags", tagName);
         }
+
         Page<User> userPage = this.page(new Page<>(byTagsRequest.getPageNum(), byTagsRequest.getPageSize()), queryWrapper);
         List<User> newUserList = userPage.getRecords().stream()
                 .filter(

@@ -653,23 +653,23 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Boolean addFriend(AddFriendRequest addFriendRequest) {
-        if (addFriendRequest == null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
         RLock lock = redissonClient.getLock(ADD_FRIEND_KEY);
         try {
             //只有一个线程会获取锁
-            //判断发送人id和接收人id是否存在
-            User sender = this.getById(addFriendRequest.getSenderId());
-            User recipient = this.getById(addFriendRequest.getRecipientId());
+            //获取发送人id和接收人id
+            Long recipientId = addFriendRequest.getRecipientId();
+            Long senderId = addFriendRequest.getSenderId();
+            // 根据发送人和收件人id  获取他们的用户信息
+            User sender = this.getById(recipientId);//this是Userservice
+            User recipient = this.getById(senderId);
+            // 判断发件人和收件人是否相等
             if (sender == recipient){
                 throw  new BusinessException(ErrorCode.PARAMS_ERROR);
             }
             if (sender == null || recipient == null) {
                 throw  new BusinessException(ErrorCode.PARAMS_ERROR,"发件人或收件人不存在");
             }
-            Long recipientId = addFriendRequest.getRecipientId();
-            Long senderId = addFriendRequest.getSenderId();
+
             //校验是否已经是好友
             Boolean alreadyFriends = checkIfAlreadyFriends(sender, recipientId);
             Boolean alreadyFriends1 = checkIfAlreadyFriends(recipient, senderId);
@@ -680,8 +680,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             //判断是否已经发送好友申请，如果状态为添加失败则可以继续添加
             QueryWrapper<Notice> queryWrapper = new QueryWrapper<>();
             queryWrapper.lambda().eq(Notice::getSenderId, senderId).eq(Notice::getRecipientId,
-                    recipientId);
-            List<Notice> list = noticeService.list(queryWrapper);
+                    recipientId);//设置查询条件
+            List<Notice> list = noticeService.list(queryWrapper);// 在消息表中查询 是否已发送了好友申请
             for (Notice notice : list) {
                 //正在发送好友申请
                 if (notice.getAddFriendStatus().equals(AddFriendStatusEnum.ADDING.getValue())) {
@@ -775,6 +775,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         Long recipientId = addFriendRequest.getRecipientId();
         // 校验发件人和收件人是否存在
         validateUsersExist(senderId, recipientId);
+
         User sender = this.getById(senderId);
         User recipient = this.getById(recipientId);
 
@@ -784,7 +785,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         if (alreadyFriends && alreadyFriends1) {
             return true;
         }
-        // 修改消息通知表
+        // 修改消息通知表，设置添加状态为一天假
         processFriendRequest(addFriendRequest, AddFriendStatusEnum.ADD_SUCCESS.getValue());
         // 在好友列表互相添加id
         addFriendToLists(addFriendRequest.getSenderId(), addFriendRequest.getRecipientId());
@@ -794,10 +795,24 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean rejectFriend(AddFriendRequest addFriendRequest) {
+        Long senderId = addFriendRequest.getSenderId();
+        Long recipientId = addFriendRequest.getRecipientId();
         // 校验发件人和收件人是否存在
         validateUsersExist(addFriendRequest.getSenderId(), addFriendRequest.getRecipientId());
+
+        User sender = this.getById(senderId);
+        User recipient = this.getById(recipientId);
+
+        // 校验是否已经是好友
+        Boolean alreadyFriends = checkIfAlreadyFriends(sender, recipientId);
+        Boolean alreadyFriends1 = checkIfAlreadyFriends(recipient, senderId);
+        // 如果不是好友就直接返回
+        if (alreadyFriends && alreadyFriends1) {
+            return true;
+        }
         // 修改消息通知表
         processFriendRequest(addFriendRequest, AddFriendStatusEnum.ADD_ERROR.getValue());
+
         return true;
 
     }
@@ -839,16 +854,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     }
     @Override
     public List<User> listFriend(User loginUser) {
-        // 最新数据
+        // 从数据库中获取最新数据
         User user = this.getById(loginUser.getId());
-        String friendId = user.getFriendId();
+        String friendIdList = user.getFriendId();
 
         ArrayList<User> userArrayList = new ArrayList<>();
-        if (StrUtil.isBlank(friendId)) {
+        if (StrUtil.isBlank(friendIdList)) {
             return userArrayList;
         }
-
-        JSONArray jsonArray = JSONUtil.parseArray(friendId);
+        // 转化为Json列表
+        JSONArray jsonArray = JSONUtil.parseArray(friendIdList);
         for (Object id : jsonArray) {
             userArrayList.add(this.getById((Serializable) id));
         }

@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import static com.baomidou.mybatisplus.core.enums.SqlKeyword.DESC;
 import static com.treay.yujian.constant.RedisConstant.TOKEN_KEY;
 import static com.treay.yujian.constant.RedisConstant.USER_SEARCH_KEY;
 
@@ -86,6 +87,10 @@ public class UserController {
     public BaseResponse<Boolean> deleteFriend(@RequestBody DeleteFriendRequest deleteFriendRequest) {
         if (deleteFriendRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        User loginUser = userService.getLoginUser(deleteFriendRequest.getUserAccount(), deleteFriendRequest.getUuid());
+        if (loginUser == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN, "未登录");
         }
         Boolean result = userService.deleteFriend(deleteFriendRequest);
         return ResultUtils.success(result);
@@ -323,6 +328,9 @@ public class UserController {
         }
         // 判断是否为当前用户，
         User loginUser = userService.getLoginUser(userAccount, uuid);
+        if (loginUser == null) {
+            throw new BusinessException(ErrorCode.NO_AUTH,"未登录");
+        }
         String key = USER_SEARCH_KEY + loginUser.getId();
         Page<User> userPage = new Page<>();
         // 读取缓存
@@ -336,8 +344,10 @@ public class UserController {
             return ResultUtils.success(userPage);
         }
 
-        // 查询数据库
-        userList = userMapper.searchAddCount();
+        // 从数据库中获取 用户列表（前20条）
+        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
+        queryWrapper.lambda().orderByDesc(User::getAddCount);
+        userList = userService.list(queryWrapper);
 
         // 过滤当前登录用户
         userList = userList
@@ -345,8 +355,9 @@ public class UserController {
                 .filter(user -> user.getId() != loginUser.getId())
                 .collect(Collectors.toList());
 
-        // 对用户进行处理
+        // 对用户进行脱敏处理
         List<User> safetyUsers = userList.stream().map(userService::getSafetyUser).collect(Collectors.toList());
+        // 设置分页信息
         userPage.setRecords(safetyUsers);
 
         // 写缓存

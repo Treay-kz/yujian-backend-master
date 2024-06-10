@@ -62,7 +62,7 @@ public class FileController {
             avatarParent.mkdirs();
         }
 
-        // 定义文件的唯一标识符
+        // 定义文件的唯一标识符，就是存储的文件名
         String uuid = IdUtil.fastSimpleUUID();
         String fileUuid = uuid + "." + type;
         File avatar = new File(filePath + File.separator + fileUuid);
@@ -96,7 +96,8 @@ public class FileController {
             avatarFile.setType(type);
             avatarFile.setUrl(url);
             avatarFile.setMd5(md5);
-            avatarFile.setUserId(1L);
+            avatarFile.setUserId(1L); // 没删
+            // insert into avatar avatarFile
             avatarService.save(avatarFile);
             // 返回文件路径或其他响应
             return ResultUtils.success(url);
@@ -116,13 +117,14 @@ public class FileController {
      */
     @GetMapping("/{fileUUID}")
     public void down(@PathVariable String fileUUID, HttpServletResponse response) throws IOException {
-        // 服务器和本地写法
+        // 获取要下载的文件
         File file = new File(filePath + "\\" + fileUUID);
-
+        // 构造响应
         response.addHeader("Content-Disposition", "attachment;filename" + URLEncoder.encode(fileUUID, "UTF-8"));
         response.setContentType("application/octet-stream");
         ServletOutputStream os = response.getOutputStream();
         try {
+            // 读取文件内容并写入响应
             os.write(jodd.io.FileUtil.readBytes(file));
         }
         catch (IOException e){

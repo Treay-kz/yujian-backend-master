@@ -59,8 +59,8 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         if (loginUser == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN);
         }
-        final long userId = loginUser.getId();
-        // 3. 校验信息
+        long userId = loginUser.getId();
+        // 3. 校验信息是否合法
         //对请求参数进行校验，包括队伍人数、队伍标题、队伍描述、队伍状态和密码等。如果不符合要求，则抛出相应的参数错误的异常
         //   1. 队伍人数 > 1 且 <= 20
         int maxNum = Optional.ofNullable(addTeamRequest.getMaxNum()).orElse(0);
@@ -101,8 +101,8 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         BeanUtils.copyProperties(addTeamRequest, team);
 
         QueryWrapper<Team> queryWrapper = new QueryWrapper<>();
-        queryWrapper.lambda().eq(Team::getUserId, userId);
-        long hasTeamNum = this.count(queryWrapper);
+        queryWrapper.lambda().eq(Team::getUserId, userId);// 设置  查询创建者id为自己的记录
+        long hasTeamNum = this.count(queryWrapper); // 去数据库中查询
         if (hasTeamNum >= 5) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户最多创建 5 个队伍");
         }

@@ -248,15 +248,16 @@ public class TeamController {
         if (teamQueryRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        // 去关系表中获取teamIdList
+
         User loginUser = userService.getLoginUser(teamQueryRequest.getUserAccount(), teamQueryRequest.getUuid());
         // 获取当前用户的ID
         Long userId = loginUser.getId();
+        // 去关系表中获取teamIdList
         // 准备查询条件，获取用户加入的所有队伍
         QueryWrapper<UserTeam> queryWrapper = new QueryWrapper<>();
         queryWrapper.lambda().eq(UserTeam::getUserId,userId);
 
-        // 从userTeamService中查询当前用户加入的所有队伍信息
+        // 从userTeamService中查询当前用户加入的所有队伍id列表
         List<UserTeam> userTeamList = userTeamService.list(queryWrapper);
         // 使用Stream API和Collectors.groupingBy方法，按队伍ID分组，去除重复的队伍信息
         Map<Long, List<UserTeam>> listMap = userTeamList.stream().collect(Collectors.groupingBy(UserTeam::getTeamId));

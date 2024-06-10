@@ -1,3 +1,21 @@
+create table if not exists yujian.avatar
+(
+    id         bigint auto_increment comment 'id'
+        primary key,
+    md5        varchar(255)                       null comment 'md5标识',
+    name       varchar(255)                       null comment '文件名称',
+    type       varchar(255)                       null comment '文件类型',
+    size       bigint                             null comment '文件大小（kb）',
+    url        varchar(255)                       null comment '文件路径',
+    userId     bigint                             not null comment '用户id',
+    createTime datetime default CURRENT_TIMESTAMP null comment '创建时间',
+    updateTime datetime default CURRENT_TIMESTAMP null on update CURRENT_TIMESTAMP comment '修改时间',
+    isDelete   tinyint  default 0                 null comment '是否删除',
+    constraint unique_name
+        unique (name)
+)
+    comment '头像表';
+
 -- auto-generated definition
 create table message
 (

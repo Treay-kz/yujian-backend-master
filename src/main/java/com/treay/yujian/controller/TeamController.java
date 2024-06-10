@@ -58,6 +58,11 @@ public class TeamController {
         if (addTeamRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+        User loginUser = userService.getLoginUser(addTeamRequest.getUserAccount(), addTeamRequest.getUuid());
+        if (loginUser == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN);
+        }
+
         long result = teamService.addTeam(addTeamRequest);
         return ResultUtils.success(result);
     }
@@ -158,7 +163,13 @@ public class TeamController {
         if (teamQuitRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        Boolean result = teamService.quitTeam(teamQuitRequest);
+        String userAccount = teamQuitRequest.getUserAccount();
+        String uuid = teamQuitRequest.getUuid();
+        User loginUser = userService.getLoginUser(userAccount, uuid);
+        if (loginUser == null) {
+            throw new BusinessException(ErrorCode.NO_AUTH,"未登录");
+        }
+        Boolean result = teamService.quitTeam( loginUser ,teamQuitRequest.getTeamId());
         return ResultUtils.success(result);
     }
 

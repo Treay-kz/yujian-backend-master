@@ -53,10 +53,6 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
     @Override
     @Transactional(rollbackFor = Exception.class)
     public long addTeam(AddTeamRequest addTeamRequest) {
-        // 1. 请求参数是否为空？
-        if (addTeamRequest == null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
         // 2. 是否登录，未登录不允许创建
         User loginUser = userService.getLoginUser(addTeamRequest.getUserAccount(), addTeamRequest.getUuid());
         if (loginUser == null) {
@@ -100,6 +96,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         // 7. 校验用户最多创建 5 个队伍
         Team team = new Team();
         BeanUtils.copyProperties(addTeamRequest, team);
+
         QueryWrapper<Team> queryWrapper = new QueryWrapper<>();
         queryWrapper.lambda().eq(Team::getUserId, userId);
         long hasTeamNum = this.count(queryWrapper);
@@ -108,13 +105,14 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         }
 
         // 8. 插入队伍信息到队伍表
-        team.setId(null);
         team.setUserId(userId);
         boolean result = this.save(team);
+
         Long teamId = team.getId();
         if (!result || teamId == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "创建队伍失败");
         }
+
         // 9. 插入用户  => 队伍关系到关系表
         UserTeam userTeam = new UserTeam();
         userTeam.setUserId(userId);
@@ -246,18 +244,8 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Boolean quitTeam(TeamQuitRequest teamQuitRequest) {
+    public Boolean quitTeam( User loginUser ,Long teamId) {
 
-        if (teamQuitRequest == null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
-
-        //当前用户
-        String userAccount = teamQuitRequest.getUserAccount();
-        String uuid = teamQuitRequest.getUuid();
-        User loginUser = userService.getLoginUser(userAccount, uuid);
-
-        Long teamId = teamQuitRequest.getTeamId();
         Team team = getTeamById(teamId);
 
         //查询是否加入队伍
@@ -297,15 +285,10 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         //1. 从请求参数中取出队伍名称等查询条件，如果存在则作为查询条件
         //当前登录用户
         User loginUser = userService.getLoginUser(teamQueryRequest.getUserAccount(), teamQueryRequest.getUuid());
-
         QueryWrapper<Team> queryWrapper = new QueryWrapper<>();
 
         queryWrapper.lambda()
-                .eq(teamQueryRequest.getId() != null && teamQueryRequest.getId() > 0, Team::getId, teamQueryRequest.getId())
-                .in(!com.baomidou.mybatisplus.core.toolkit.CollectionUtils.isEmpty(teamQueryRequest.getIdList()), Team::getId, teamQueryRequest.getIdList())
-                .like(StringUtils.isNotBlank(teamQueryRequest.getName()), Team::getName, teamQueryRequest.getName())
-                .like(StringUtils.isNotBlank(teamQueryRequest.getDescription()), Team::getDescription, teamQueryRequest.getDescription())
-                .apply(teamQueryRequest.getMaxNum() != null && teamQueryRequest.getMaxNum() <= 10, "max_num <= {0}", teamQueryRequest.getMaxNum())
+                .in(!CollectionUtils.isEmpty(teamQueryRequest.getIdList()), Team::getId, teamQueryRequest.getIdList())
                 .eq(teamQueryRequest.getUserId() != null && teamQueryRequest.getUserId() > 0, Team::getUserId, teamQueryRequest.getUserId());
 
         if (StringUtils.isNotBlank(teamQueryRequest.getSearchText())) {
@@ -314,23 +297,24 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
                     .or()
                     .like(Team::getDescription, teamQueryRequest.getSearchText());
         }
-        // 过期时间大于当前日期或永不过期的过期代码
+        // 过期时间大于当前日期或永不过期的队伍
         queryWrapper.lambda().and(qw -> qw.gt(Team::getExpireTime, new Date()).or().isNull(Team::getExpireTime));
 
+        // 查询加密或公开的队伍
         Integer status = teamQueryRequest.getStatus();
         TeamStatusEnum statusEnum = TeamStatusEnum.getEnumByValue(status);
         if (statusEnum != null && (statusEnum.equals(TeamStatusEnum.PUBLIC) || statusEnum.equals(TeamStatusEnum.SECRET))) {
             queryWrapper.lambda().eq(Team::getStatus, status);
         }
-        List<Team> teamList= this.list(queryWrapper);
-        //加入私有队伍
 
+        List<Team> teamList= this.list(queryWrapper);
 
         if (CollectionUtils.isEmpty(teamList)) {
             return new ArrayList<>();
         }
+
         List<TeamUserVO> respTeamUserVO = new ArrayList<>();
-        //关联查询用户信息并脱敏
+        // 关联查询用户信息并脱敏  根据每个队伍id查所有加入这个队伍的用户id，再根据用户id查
         for (Team team : teamList) {
             if (team.getExpireTime() == null || team.getExpireTime().after(new Date())) {
                 TeamUserVO teamUserVO = new TeamUserVO();

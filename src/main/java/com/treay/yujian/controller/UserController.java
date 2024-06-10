@@ -2,6 +2,7 @@ package com.treay.yujian.controller;
 
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.treay.yujian.common.BaseResponse;
 import com.treay.yujian.common.ErrorCode;
@@ -80,7 +81,6 @@ public class UserController {
         if (deleteFriendRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-
         Boolean result = userService.deleteFriend(deleteFriendRequest);
         return ResultUtils.success(result);
     }
@@ -92,16 +92,17 @@ public class UserController {
      */
     @PostMapping("/friend/agree")
     public BaseResponse<Boolean> agreeFriend(@RequestBody AddFriendRequest addFriendRequest) {
-//        WebSocketRespVO webSocketRespVO = new WebSocketRespVO();
+        if (addFriendRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        User loginUser = userService.getLoginUser(addFriendRequest.getUserAccount(), addFriendRequest.getUuid());
+        if (loginUser == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN, "未登录");
+        }
         boolean agree = userService.agreeFriend(addFriendRequest);
         if (!agree) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "同意好友申请失败");
         }
-//        User user = userService.getById(addFriendRequest.getRecipientId());
-//        webSocketRespVO.setMessage("添加" + user.getUsername() + "的好友申请已通过");
-//        webSocketRespVO.setIsAgree(true);
-//        webSocketRespVO.setSenderId(addFriendRequest.getSenderId());
-//        webSocketServer.sendToAllClient(JSONUtil.toJsonStr(webSocketRespVO));
         return ResultUtils.success(agree);
     }
 
@@ -112,16 +113,17 @@ public class UserController {
      */
     @PostMapping("/friend/reject")
     public BaseResponse<Boolean> rejectFriend(@RequestBody AddFriendRequest addFriendRequest) {
-//        WebSocketRespVO webSocketRespVO = new WebSocketRespVO();
+        if (addFriendRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        User loginUser = userService.getLoginUser(addFriendRequest.getUserAccount(), addFriendRequest.getUuid());
+        if (loginUser == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN, "未登录");
+        }
         boolean agree = userService.rejectFriend(addFriendRequest);
         if (!agree) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "拒绝好友申请失败");
         }
-//        User user = userService.getById(addFriendRequest.getRecipientId());
-//        webSocketRespVO.setMessage("添加" + user.getUsername() + "的好友申请被拒绝");
-//        webSocketRespVO.setIsAgree(false);
-//        webSocketRespVO.setSenderId(addFriendRequest.getSenderId());
-//        webSocketServer.sendToAllClient(JSONUtil.toJsonStr(webSocketRespVO));
         return ResultUtils.success(true);
     }
 
@@ -169,17 +171,20 @@ public class UserController {
      */
     @PostMapping("/register")
     public BaseResponse<Long> userRegister(@RequestBody UserRegisterRequest userRegisterRequest) {
+
         if (userRegisterRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+
         String userAccount = userRegisterRequest.getUserAccount();
         String userPassword = userRegisterRequest.getUserPassword();
         String userEmail = userRegisterRequest.getUserEmail();
         String code = userRegisterRequest.getCode();
         String checkPassword = userRegisterRequest.getCheckPassword();
         if (StringUtils.isAnyBlank(userAccount, userPassword, checkPassword,userEmail,code)) {
-            return null;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"参数不能为空");
         }
+
         long result = userService.userRegister(userAccount, userEmail,code,userPassword, checkPassword);
         return ResultUtils.success(result);
     }
@@ -202,13 +207,14 @@ public class UserController {
     @PostMapping("/login")
     public BaseResponse<String> userLogin(@RequestBody UserLoginRequest userLoginRequest) {
         if (userLoginRequest == null) {
-            return ResultUtils.error(ErrorCode.PARAMS_ERROR);
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+
         String userAccount = userLoginRequest.getUserAccount();
         String userPassword = userLoginRequest.getUserPassword();
         String uuid = userLoginRequest.getUuid();
         if (StringUtils.isAnyBlank(userAccount, userPassword)) {
-            return ResultUtils.error(ErrorCode.PARAMS_ERROR);
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         String result = userService.userLogin(userAccount, userPassword, uuid);
         return ResultUtils.success(result);
@@ -260,6 +266,7 @@ public class UserController {
     @GetMapping("/search")
     public BaseResponse<Page<User>> searchUsers(long pageSize, long current, String currentUserAccount) {
         QueryWrapper<User> wrapper = new QueryWrapper<>();
+
         wrapper.lambda().eq(User::getUserAccount, currentUserAccount);
         User currentUser = userService.getOne(wrapper);
         if (currentUser.getUserRole() == 0) {
@@ -274,16 +281,16 @@ public class UserController {
 
     /**
      * 通过标签搜素用户
-     * @param byTagsRequest
+     * @param searchUserByTagsRequest
      * @return
      */
     @GetMapping("/search/tags")
-    public BaseResponse<Page<User>> searchUsersByTags(SearchUserByTagsRequest byTagsRequest) {
-        System.out.println("tagNameList = " + byTagsRequest);
-        if (com.baomidou.mybatisplus.core.toolkit.CollectionUtils.isEmpty(byTagsRequest.getTagNameList())) {
+    public BaseResponse<Page<User>> searchUsersByTags(SearchUserByTagsRequest searchUserByTagsRequest) {
+
+        if (CollectionUtils.isEmpty(searchUserByTagsRequest.getTagNameList())) {
             throw new BusinessException(ErrorCode.NULL_ERROR);
         }
-        Page<User> userList = userService.searchUsersByTags(byTagsRequest);
+        Page<User> userList = userService.searchUsersByTags(searchUserByTagsRequest);
         return ResultUtils.success(userList);
     }
 
@@ -305,12 +312,11 @@ public class UserController {
         // 判断是否为当前用户，
         User loginUser = userService.getLoginUser(userAccount, uuid);
         String key = USER_SEARCH_KEY + loginUser.getId();
-
+        Page<User> userPage = new Page<>();
         // 读取缓存
         List<User> userList = (List<User>) redisTemplate.opsForValue().get(key);
-        Page<User> userPage = new Page<>();
         // 如果缓存有数据，直接返回
-        if (com.baomidou.mybatisplus.core.toolkit.CollectionUtils.isNotEmpty(userList)) {
+        if (CollectionUtils.isNotEmpty(userList)) {
             userList = userList.stream()
                     .filter(user -> user.getId() != loginUser.getId())
                     .collect(Collectors.toList());

@@ -84,6 +84,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
     @Override
     public long userRegister(String userAccount,String userEmail, String code, String userPassword, String checkPassword) {
+
+        // 涉及查询数据库的判断要往后放，
         // 1. 校验
         if (StringUtils.isAnyBlank(userAccount, userEmail, code, userPassword, checkPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
@@ -94,11 +96,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         if (userPassword.length() < 8 || checkPassword.length() < 8) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户密码过短");
         }
-
+        // 邮箱格式是否正确
+        Pattern emailValidPattern = Pattern.compile("[a-zA-Z0-9]+@[A-Za-z0-9]+\\.[a-z0-9]");
+        Matcher emailMatch = emailValidPattern.matcher(userEmail);
+        if (!emailMatch.find()) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "邮箱格式错误");
+        }
         // 账户不能包含特殊字符
-        String validPattern = "[`~!@#$%^&*()+=|{}':;',\\\\[\\\\].<>/?~！@#￥%……&*（）——+|{}【】‘；：”“’。，、？]";
-        Matcher matcher = Pattern.compile(validPattern).matcher(userAccount);
-        if (matcher.find()) {
+        String userAccountValidPattern = "[`~!@#$%^&*()+=|{}':;',\\\\[\\\\].<>/?~！@#￥%……&*（）——+|{}【】‘；：”“’。，、？]";
+        Matcher userAccountMatcher = Pattern.compile(userAccountValidPattern).matcher(userAccount);
+        if (userAccountMatcher.find()) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR,"用户账号不能包含特殊字符");
         }
         // 密码和校验密码相同
@@ -109,25 +116,27 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         // 获取缓存验证码
         String redisKey = String.format(SEND_MESSAGE_KEY +  userEmail);
         ValueOperations<String, Object> valueOperations = redisTemplate.opsForValue();
-
         UserSendMessage sendMessage = (UserSendMessage) valueOperations.get(redisKey);
         if (!Optional.ofNullable(sendMessage).isPresent()) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "获取验证码失败!");
         }
-
         String sendMessageCode = sendMessage.getCode();
-        log.info(sendMessageCode);
         if (!code.equals(sendMessageCode)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "验证码不匹配!");
         }
+
         // 账户不能重复
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
+        // 设置查询条件
         queryWrapper.eq("userAccount", userAccount);
+        // 查询数据库
         long count = userMapper.selectCount(queryWrapper);
         if (count > 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号重复");
         }
-        // 2. 加密
+
+        // 2. 向数据库中插入数据的准备工作
+        // 密码加密
         String encryptPassword = DigestUtils.md5DigestAsHex((SALT + userPassword).getBytes());
         // 3. 插入数据
         User user = new User();
@@ -139,50 +148,49 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         user.setUsername("用户" + generateValidateCode(6).toString());
         String defaultTag = "\"萌新\"";
         user.setTags("["+  defaultTag + "]");
-        boolean saveResult = this.save(user);
-        if (!saveResult) {
+        // this指userService
+        long saveResult = userMapper.insert(user);
+
+        if (saveResult <= 0) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR,"注册失败");
         }
-        queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("userAccount", userAccount);
-        user = userMapper.selectOne(queryWrapper);
-        if (user != null) {
-            String planetCode = String.valueOf(user.getId());
-            user.setPlanetCode(planetCode);
-            this.updateById(user);
+        String planetCode = String.valueOf(user.getId());
+        user.setPlanetCode(planetCode);
+        this.updateById(user);
 
-        }
         return user.getId();
     }
-
 
 
     @Override
     public String userLogin(String userAccount, String userPassword, String uuid) {
         if (StringUtils.isAnyBlank(userAccount, userPassword)) {
-            return null;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
         }
         if (userAccount.length() < 4) {
-            return null;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户账号过短");
         }
         if (userPassword.length() < 8) {
-            return null;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户密码过短");
         }
+
         // 账户不能包含特殊字符
         String validPattern = "[`~!@#$%^&*()+=|{}':;',\\\\[\\\\].<>/?~！@#￥%……&*（）——+|{}【】‘；：”“’。，、？]";
         Matcher matcher = Pattern.compile(validPattern).matcher(userAccount);
         if (matcher.find()) {
-            return null;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户账号不能包括特殊字符");
         }
         // 2. 加密
         String encryptPassword = DigestUtils.md5DigestAsHex((SALT + userPassword).getBytes());
-        String currentToken = userAccount + "-" + uuid;
-        // 从Redis中查询用户是否存在
+        String token = userAccount + "-" + uuid;
+
+        // 从缓存中查询用户是否存在
         User cashUser = (User) redisTemplate.opsForHash().get(TOKEN_KEY + uuid, userAccount);
         if (cashUser != null) {
             redisTemplate.expire(TOKEN_KEY + uuid, 10, TimeUnit.MINUTES);
-            return currentToken;
+            return token;
         }
+
         // 查询用户是否存在
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("userAccount", userAccount);
@@ -190,18 +198,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         User user = userMapper.selectOne(queryWrapper);
         // 用户不存在
         if (user == null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "user login failed, userAccount cannot match " +
-                    "userPassword");
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户账号密码不匹配");
         }
+
         // 3. 用户脱敏
         User safetyUser = getSafetyUser(user);
+
         String newUuid = UUID.randomUUID().toString().replace("-", "");
-        log.info("uuid ==================> {}",  uuid);
-        String token = userAccount + "-" + newUuid;
+        token = userAccount + "-" + newUuid;
         // 4. 存储用户信息到Redis中,设置key过期时间和token过期时间
         redisTemplate.opsForHash().put(TOKEN_KEY + newUuid, safetyUser.getUserAccount(), safetyUser);
         redisTemplate.expire(TOKEN_KEY + newUuid, 10, TimeUnit.MINUTES);
-
         return token;
     }
 
@@ -416,37 +423,37 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         List<String> tagList = gson.fromJson(tags, new TypeToken<List<String>>() {
         }.getType());
 
+        Queue<Pair<User, Long>> priorityQueue = new PriorityQueue<>(
+                Comparator.comparing(Pair::getValue)
+        );
 
-        //   用户列表的下标 => 相似度
-        List<Pair<User, Long>> list = new ArrayList<>();
-        // 依次计算所有用户和当前用户的相似度
-        for (int i = 0; i < userList.size(); i++) {
-            User user = userList.get(i);
+        for (User user : userList) {
             String userTags = user.getTags();
-            // 无标签或者为当前用户自己
+            // 无标签或者为当前用户自己，直接跳过
             if (StringUtils.isBlank(userTags) || user.getId() == loginUser.getId()) {
                 continue;
             }
-            // 处理其他用户标签
             List<String> userTagList = gson.fromJson(userTags, new TypeToken<List<String>>() {}.getType());
-            // 计算相似度
             long distance = AlgorithmUtils.minDistance(tagList, userTagList);
-            list.add(new Pair<>(user, distance));
+            // 如果队列未满或者当前用户的相似度更优，则入队并可能移除队尾元素以保持队列大小
+            if (priorityQueue.size() < num || distance < priorityQueue.peek().getValue()) {
+                if (priorityQueue.size() == num) {
+                    priorityQueue.poll(); // 移除当前队列中相似度最大的用户
+                }
+                priorityQueue.offer(new Pair<>(user, distance));
+            }
         }
 
-        // 按编辑距离由小到大排序
-        List<Pair<User, Long>> topUserPairList = list.stream()
-                .sorted((a, b) -> (int) (a.getValue() - b.getValue()))
-                .limit(num)
-                .collect(Collectors.toList());
-        // 原本顺序的 userId 列表
-        List<Long> userIdList = topUserPairList.stream().map(pair -> pair.getKey().getId()).collect(Collectors.toList());
+        // 从优先队列中提取结果，直接获得topN的用户ID列表，无需再进行排序
+        List<Long> userIdList = new ArrayList<>(priorityQueue.size());
+        for (Pair<User, Long> pair : priorityQueue) {
+            userIdList.add(pair.getKey().getId());
+        }
+
+
+        // 使用userIdList查询并转换为最终的User列表
         QueryWrapper<User> userQueryWrapper = new QueryWrapper<>();
         userQueryWrapper.in("id", userIdList);
-
-        // 1, 3, 2
-        // User1、User2、User3
-        // 1 => User1, 2 => User2, 3 => User3
         Map<Long, List<User>> userIdUserListMap = this.list(userQueryWrapper)
                 .stream()
                 .map(user -> getSafetyUser(user))
@@ -455,7 +462,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         for (Long userId : userIdList) {
             finalUserList.add(userIdUserListMap.get(userId).get(0));
         }
-
         //写缓存
         try {
             redisTemplate.opsForValue().set(key, finalUserList, 5, TimeUnit.MINUTES);
@@ -631,7 +637,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         TagVo tagVo = new TagVo();
         tagVo.setOldTags(oldTagList);
         tagVo.setRecommendTags(RecommendTags);
-        System.out.println(tagVo);
         return tagVo;
     }
 
@@ -677,6 +682,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
                 if (notice.getAddFriendStatus().equals(AddFriendStatusEnum.ADDING.getValue())) {
                     throw new BusinessException(ErrorCode.PARAMS_ERROR, "正在发送好友申请，请勿重新发送!");
                 }
+
                 //添加成功，对方是你的好友
                 if (notice.getAddFriendStatus().equals(AddFriendStatusEnum.ADD_SUCCESS.getValue())) {
                     throw new BusinessException(ErrorCode.PARAMS_ERROR, "对方已经是您的好友，请勿重新添加!");
@@ -703,7 +709,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             this.updateById(user);
             return true;
         } finally {
-            //只能释放自己的锁
+
             if (lock.isHeldByCurrentThread()) {
                 lock.unlock();
             }
@@ -724,15 +730,22 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
         //删除好友，修改消息通知表的好友状态为添加失败
         QueryWrapper<Notice> queryWrapper = new QueryWrapper<>();
+        //  eq1: 表中的接受为senderId//当前用户   并且 表中发送者为 recipientId
+        // 第一次查询
         queryWrapper.lambda().eq(Notice::getRecipientId, senderId).eq(Notice::getSenderId, recipientId).eq(Notice::getAddFriendStatus, AddFriendStatusEnum.ADD_SUCCESS.getValue());
         Notice notice = noticeService.getOne(queryWrapper);
 
+        // 第二次
         if (notice==null){
             QueryWrapper<Notice> queryWrapper2 = new QueryWrapper<>();
             queryWrapper2.lambda().eq(Notice::getSenderId, senderId).eq(Notice::getRecipientId, recipientId).eq(Notice::getAddFriendStatus, AddFriendStatusEnum.ADD_SUCCESS.getValue());
             notice = noticeService.getOne(queryWrapper2);
         }
 
+        if (notice==null){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"消息通知表中不存在该条记录");
+        }
+        // 设置状态为添加失败
         notice.setAddFriendStatus(AddFriendStatusEnum.ADD_ERROR.getValue());
         noticeService.updateById(notice);
 

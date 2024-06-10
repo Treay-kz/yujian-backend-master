@@ -34,8 +34,10 @@ public class NoticeServiceImpl extends ServiceImpl<NoticeMapper, Notice>
     @Override
     public List<User> getNoticeData(Long id) {
         QueryWrapper<Notice> queryWrapper = new QueryWrapper<>();
+
         queryWrapper.lambda().eq(Notice::getRecipientId,id).eq(Notice::getAddFriendStatus,
                 AddFriendStatusEnum.ADDING.getValue());
+
         List<Notice> noticeList = this.list(queryWrapper);
         ArrayList<Long> userIds = new ArrayList<>();
 
@@ -44,6 +46,7 @@ public class NoticeServiceImpl extends ServiceImpl<NoticeMapper, Notice>
         if (CollectionUtils.isEmpty(userIds)){
             return new ArrayList<>();
         }
+
         QueryWrapper<User> userQueryWrapper = new QueryWrapper<>();
         userQueryWrapper.lambda().in(User::getId,userIds);
         List<User> userList = userService.list(userQueryWrapper);

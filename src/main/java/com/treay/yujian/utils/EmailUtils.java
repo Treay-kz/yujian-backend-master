@@ -1,11 +1,15 @@
 package com.treay.yujian.utils;
 
+import com.treay.yujian.common.ErrorCode;
+import com.treay.yujian.exception.BusinessException;
 import org.springframework.beans.factory.annotation.Value;
 
 import javax.mail.*;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
 import java.util.Properties;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * @version 1.0
@@ -14,6 +18,13 @@ import java.util.Properties;
 public class EmailUtils {
 
     public static void sendEmail(String email,String authCode) throws MessagingException {
+
+        Pattern emailValidPattern = Pattern.compile("[a-zA-Z0-9]+@[A-Za-z0-9]+\\.[a-z0-9]");
+        Matcher emailMatch = emailValidPattern.matcher(email);
+        if (!emailMatch.find()) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "邮箱格式错误");
+        }
+
         // 创建Properties 类用于记录邮箱的一些属性
         Properties props = new Properties();
         // 表示SMTP发送邮件，必须进行身份验证
@@ -24,19 +35,19 @@ public class EmailUtils {
         //端口号，QQ邮箱端口587
         props.put("mail.smtp.port", "587");
         // 此处填写，写信人的账号
-        props.put("mail.user", "xxxxx@qq.com");
+        props.put("mail.user", "1679924491@qq.com");
         // 此处填写16位STMP口令(授权码)
-        props.put("mail.password", "xxxxxxx");
+        props.put("mail.password", "jyljhbuvzxdeejcg");
 
         // 构建授权信息，用于进行SMTP进行身份验证
         Authenticator authenticator = new Authenticator() {
             protected PasswordAuthentication getPasswordAuthentication() {
-                // 用户名、密码，都不用改直接copy
                 String userName = props.getProperty("mail.user");
                 String password = props.getProperty("mail.password");
                 return new PasswordAuthentication(userName, password);
             }
         };
+
         // 使用环境属性和授权信息，创建邮件会话
         Session mailSession = Session.getInstance(props, authenticator);
         // 创建邮件消息
@@ -51,7 +62,7 @@ public class EmailUtils {
         message.setSubject("遇见--伙伴匹配系统");
         // 设置邮件的内容体
         message.setContent("【遇见--匹配系统】您好，您的验证码为："+authCode+"，请在5分钟内使用", "text/html;charset=UTF-8");
-        // 最后当然就是发送邮件啦
+        // 发送邮件
         Transport.send(message);
     }
 

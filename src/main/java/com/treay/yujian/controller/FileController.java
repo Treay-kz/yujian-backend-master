@@ -83,7 +83,10 @@ public class FileController {
                 url = avatarList.get(0).getUrl();
                 avatar.delete();
             } else {
-                url = "http://yujian-backend.treay.cn/api/file/" + fileUuid;
+                // 服务器
+//                url = "http://yujian-backend.treay.cn/api/file/" + fileUuid;
+                // 本地
+                url = "http://localhost:8080/api/file/" + fileUuid;
             }
 
             //存到数据库
@@ -93,6 +96,7 @@ public class FileController {
             avatarFile.setType(type);
             avatarFile.setUrl(url);
             avatarFile.setMd5(md5);
+            avatarFile.setUserId(1L);
             avatarService.save(avatarFile);
             // 返回文件路径或其他响应
             return ResultUtils.success(url);
@@ -112,9 +116,8 @@ public class FileController {
      */
     @GetMapping("/{fileUUID}")
     public void down(@PathVariable String fileUUID, HttpServletResponse response) throws IOException {
-        //服务器写法
-        File file = new File(filePath  + fileUUID);
-//        File file = new File(filePath + "\\" + fileUUID);
+        // 服务器和本地写法
+        File file = new File(filePath + "\\" + fileUUID);
 
         response.addHeader("Content-Disposition", "attachment;filename" + URLEncoder.encode(fileUUID, "UTF-8"));
         response.setContentType("application/octet-stream");

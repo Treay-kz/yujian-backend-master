@@ -120,16 +120,21 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         if (!Optional.ofNullable(sendMessage).isPresent()) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "获取验证码失败!");
         }
+
         String sendMessageCode = sendMessage.getCode();
+        // code是用户填入验证码  sendMessageCode是正确验证码 ->验证码存在缓存中
         if (!code.equals(sendMessageCode)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "验证码不匹配!");
         }
+
         valueOperations.getOperations().delete(redisKey);
+
         // 账户不能重复
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
-        // 设置查询条件
-        queryWrapper.lambda().eq(User::getAddCount, userAccount);
-        // 查询数据库
+        // 设置查询条件 为 userAccount列 == 用户传入的userAccount
+        queryWrapper.lambda().eq(User::getUserAccount, userAccount);
+        // 查询数据库 selectCount返回符合queryWrapper条件的记录数
+        // select * from user where userAccount = #{userAccount}
         long count = userMapper.selectCount(queryWrapper);
         if (count > 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号重复");
@@ -138,24 +143,30 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         // 2. 向数据库中插入数据的准备工作
         // 密码加密
         String encryptPassword = DigestUtils.md5DigestAsHex((SALT + userPassword).getBytes());
-        // 3. 插入数据
+
+        // 3. 插入数据 并初始化用户
         User user = new User();
         user.setUserAccount(userAccount);
         user.setUserPassword(encryptPassword);
         user.setEmail(userEmail);
+        // 用户初始化
         String defaultUrl = "https://img1.baidu.com/it/u=1637179393,2329776654&fm=253&fmt=auto&app=138&f=JPEG?w=500&h=542";
         user.setAvatarUrl(defaultUrl);
         user.setUsername("用户" + generateValidateCode(6).toString());
         String defaultTag = "\"萌新\"";
         user.setTags("["+  defaultTag + "]");
-        // this指userService
+
+        // insert into user value (...)
+        // this.save(user) this指userService
         long saveResult = userMapper.insert(user);
 
         if (saveResult <= 0) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR,"注册失败");
         }
+        // 编号设置
         String planetCode = String.valueOf(user.getId());
         user.setPlanetCode(planetCode);
+
         this.updateById(user);
 
         return user.getId();
@@ -164,6 +175,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
     @Override
     public String userLogin(String userAccount, String userPassword, String uuid) {
+
         if (StringUtils.isAnyBlank(userAccount, userPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
         }
@@ -182,8 +194,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         }
         // 2. 加密
         String encryptPassword = DigestUtils.md5DigestAsHex((SALT + userPassword).getBytes());
-        String token = userAccount + "-" + uuid;
 
+        String token = userAccount + "-" + uuid;
         // 从缓存中查询用户是否存在
         User cashUser = (User) redisTemplate.opsForHash().get(TOKEN_KEY + uuid, userAccount);
         if (cashUser != null) {
@@ -195,6 +207,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("userAccount", userAccount);
         queryWrapper.eq("userPassword", encryptPassword);
+
         User user = userMapper.selectOne(queryWrapper);
         // 用户不存在
         if (user == null) {
@@ -204,6 +217,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         // 3. 用户脱敏
         User safetyUser = getSafetyUser(user);
 
+        // 缓存
         String newUuid = UUID.randomUUID().toString().replace("-", "");
         token = userAccount + "-" + newUuid;
         // 4. 存储用户信息到Redis中,设置key过期时间和token过期时间
@@ -853,6 +867,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         addFriendList(this.getById(senderId), recipientId);
         addFriendList(this.getById(recipientId), senderId);
     }
+
+
     @Override
     public List<User> listFriend(User loginUser) {
         // 从数据库中获取最新数据
@@ -926,6 +942,51 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             throw new BusinessException(ErrorCode.SYSTEM_ERROR);
         }
         return result;
+    }
+
+    @Override
+    public Page<User> recommend(long userId, long pageSize, long pageNum) {
+        // 创建分页对象
+        Page<User> userPage = new Page<>();
+
+        String key = USER_SEARCH_KEY + userId;
+        // 读取缓存
+        List<User> userList = (List<User>) redisTemplate.opsForValue().get(key);
+        // 如果缓存有数据，直接返回
+        if (com.baomidou.mybatisplus.core.toolkit.CollectionUtils.isNotEmpty(userList)) {
+            userList = userList.stream()
+                    .filter(user -> user.getId() != userId)
+                    .collect(Collectors.toList());
+            userPage.setRecords(userList);
+            return userPage;
+        }
+
+        // 从数据库中获取所有用户列表
+        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
+        queryWrapper.lambda().orderByDesc(User::getAddCount);
+        userList = this.list(queryWrapper);
+
+        // 过滤当前登录用户
+        userList = userList
+                .stream()
+                .filter(user -> user.getId() != userId)
+                .collect(Collectors.toList());
+
+        // 对用户进行脱敏处理
+        List<User> safetyUsers = userList.stream().map(this::getSafetyUser).collect(Collectors.toList());
+        // 设置分页信息
+        userPage.setRecords(safetyUsers);
+
+
+
+        // 写缓存
+        try {
+            redisTemplate.opsForValue().set(key, safetyUsers, 12, TimeUnit.HOURS);
+        } catch (Exception e) {
+            log.error("Error setting Redis key", e);
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR);
+        }
+        return userPage;
     }
 
     /**

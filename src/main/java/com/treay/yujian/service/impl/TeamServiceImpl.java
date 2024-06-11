@@ -248,22 +248,26 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
     @Override
     @Transactional(rollbackFor = Exception.class) // 声明该方法在执行时会开启事务，并且遇到异常时会回滚事务
     public Boolean quitTeam( User loginUser ,Long teamId) {
-        // getTeamById 方法获取队伍信息
-        Team team = getTeamById(teamId);
+        //  根据 userid 和 teamid 在关系表中删除 关系
+        //  如果 人数 = 1 那就在 team表中 根据 teamid 删除 team
+        //  如果 人数 > 1 且 当前用户为 队长 那么 退出队伍后 在team表中 把userId 改为 加入队伍第二早的用户
+        //  加入第二早的用户 需要在关系表中 根据teamid（查出的当前队伍·的所有用户关系） 再根据时间排序
 
         //查询是否加入队伍
         // 创建了一个用于构建查询条件的QueryWrapper对象。
         QueryWrapper<UserTeam> queryWrapper = new QueryWrapper<>();
         // 获取用户ID
         Long userId = loginUser.getId();
-        //通过lambda方法链式调用，设置查询条件，要求查询符合给定队伍ID和当前用户ID的记录。
+        // 通过lambda方法链式调用，设置查询条件，要求查询符合给定队伍ID和当前用户ID的记录。
         queryWrapper.lambda().eq(UserTeam::getTeamId, teamId).eq(UserTeam::getUserId, userId);
+        // sql: select * from user_team where team_id = ? and user_id = ?
         long count = userTeamService.count(queryWrapper);
         // 如果记录数量为0，即当前用户未加入该队伍，则抛出业务异常，提示用户未加入队伍。
         if (count == 0) {
-            throw new BusinessException(ErrorCode.NULL_ERROR, "未加入队伍");
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "未加入队伍");
         }
-
+        // getTeamById 方法获取队伍信息
+        Team team = getTeamById(teamId);
         // 查询队伍中的成员列表
         //  调用hasJoinTeamUser方法获取当前队伍中的成员列表。
         List<UserTeam> userTeams = this.hasJoinTeamUser(teamId);
@@ -284,6 +288,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
                 tempTeam.setUserId(userTeams.get(1).getUserId());
                 // 更新队伍信息，将队长转移给第二个加入的成员
                 boolean result = this.updateById(tempTeam);
+
                 if (!result) {
                     throw new BusinessException(ErrorCode.SYSTEM_ERROR, "更新队长失败");
                 }

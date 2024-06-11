@@ -49,6 +49,7 @@ public class NoticeServiceImpl extends ServiceImpl<NoticeMapper, Notice>
 
         QueryWrapper<User> userQueryWrapper = new QueryWrapper<>();
         userQueryWrapper.lambda().in(User::getId,userIds);
+        // select * from user in (ids)
         List<User> userList = userService.list(userQueryWrapper);
 
         List<User> users = userList.stream().map(user -> userService.getSafetyUser(user)).collect(Collectors.toList());

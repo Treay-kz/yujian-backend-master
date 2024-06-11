@@ -11,4 +11,5 @@ import com.treay.yujian.model.domain.UserTeam;
  */
 public interface UserTeamService extends IService<UserTeam> {
 
+
 }

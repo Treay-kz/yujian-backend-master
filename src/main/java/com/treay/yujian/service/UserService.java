@@ -185,5 +185,11 @@ public interface UserService extends IService<User> {
      */
     int updateTags(UserDTO userDTO, User loginUser);
 
-
+    /**
+     * 推荐用户
+     * @param id
+     * @param pageSize
+     * @param pageNum
+     */
+    Page<User> recommend(long userId, long pageSize, long pageNum);
 }

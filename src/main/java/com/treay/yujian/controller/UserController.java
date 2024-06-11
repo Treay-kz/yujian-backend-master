@@ -188,22 +188,25 @@ public class UserController {
      * @param userRegisterRequest
      * @return
      */
+    // 用户注册的接口
     @PostMapping("/register")
     public BaseResponse<Long> userRegister(@RequestBody UserRegisterRequest userRegisterRequest) {
-
+        // 判断传入的注册请求是否为空
         if (userRegisterRequest == null) {
+            // 如果为空，抛出参数错误异常
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-
+        // 从请求中获取用户账号、密码、邮箱、验证码和确认密码
         String userAccount = userRegisterRequest.getUserAccount();
         String userPassword = userRegisterRequest.getUserPassword();
         String userEmail = userRegisterRequest.getUserEmail();
         String code = userRegisterRequest.getCode();
         String checkPassword = userRegisterRequest.getCheckPassword();
+        // 判断所有必需参数是否为空
         if (StringUtils.isAnyBlank(userAccount, userPassword, checkPassword,userEmail,code)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR,"参数不能为空");
         }
-
+        // 调用用户服务层的注册方法，并传入注册信息
         long result = userService.userRegister(userAccount, userEmail,code,userPassword, checkPassword);
         return ResultUtils.success(result);
     }
@@ -223,18 +226,23 @@ public class UserController {
      * @param userLoginRequest
      * @return
      */
+    // 用户登录的接口
     @PostMapping("/login")
     public BaseResponse<String> userLogin(@RequestBody UserLoginRequest userLoginRequest) {
+        // 判断传入的登录请求是否为空
         if (userLoginRequest == null) {
+            // 如果为空，返回参数错误响应
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-
+        // 从请求中获取用户账号和密码
         String userAccount = userLoginRequest.getUserAccount();
         String userPassword = userLoginRequest.getUserPassword();
         String uuid = userLoginRequest.getUuid();
+        // 第一次登录不需要uuid
         if (StringUtils.isAnyBlank(userAccount, userPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+
         String result = userService.userLogin(userAccount, userPassword, uuid);
         return ResultUtils.success(result);
     }
@@ -333,43 +341,7 @@ public class UserController {
         if (loginUser == null) {
             throw new BusinessException(ErrorCode.NO_AUTH,"未登录");
         }
-        String key = USER_SEARCH_KEY + loginUser.getId();
-        Page<User> userPage = new Page<>();
-        // 读取缓存
-        List<User> userList = (List<User>) redisTemplate.opsForValue().get(key);
-        // 如果缓存有数据，直接返回
-        if (CollectionUtils.isNotEmpty(userList)) {
-            userList = userList.stream()
-                    .filter(user -> user.getId() != loginUser.getId())
-                    .collect(Collectors.toList());
-            userPage.setRecords(userList);
-            return ResultUtils.success(userPage);
-        }
-
-        // 从数据库中获取所有用户列表
-        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
-        queryWrapper.lambda().orderByDesc(User::getAddCount);
-        userList = userService.list(queryWrapper);
-
-
-        // 过滤当前登录用户
-        userList = userList
-                .stream()
-                .filter(user -> user.getId() != loginUser.getId())
-                .collect(Collectors.toList());
-
-        // 对用户进行脱敏处理
-        List<User> safetyUsers = userList.stream().map(userService::getSafetyUser).collect(Collectors.toList());
-        // 设置分页信息
-        userPage.setRecords(safetyUsers);
-
-        // 写缓存
-        try {
-            redisTemplate.opsForValue().set(key, safetyUsers, 12, TimeUnit.HOURS);
-        } catch (Exception e) {
-            log.error("Error setting Redis key", e);
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR);
-        }
+        Page<User> userPage = userService.recommend(loginUser.getId(), pageSize, pageNum);
 
         return ResultUtils.success(userPage);
     }

@@ -11,6 +11,8 @@ import com.treay.yujian.model.domain.UserTeam;
  */
 public interface UserTeamMapper extends BaseMapper<UserTeam> {
 
+
+
 }
 
 

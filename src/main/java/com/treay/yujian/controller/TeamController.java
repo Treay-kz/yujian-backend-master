@@ -159,6 +159,9 @@ public class TeamController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         User loginUser = userService.getLoginUser(teamJoinRequest.getUserAccount(), teamJoinRequest.getUuid());
+        if (loginUser == null){
+            throw new BusinessException(ErrorCode.NO_AUTH,"未登录");
+        }
         Boolean result = teamService.joinTeam(loginUser,teamJoinRequest.getTeamId(),teamJoinRequest.getPassword());
         return ResultUtils.success(result);
     }

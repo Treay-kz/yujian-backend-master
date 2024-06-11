@@ -41,6 +41,7 @@ public class NoticeController {
         if (id == null || id <0){
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+
         List<User> userList = noticeService.getNoticeData(id);
         return ResultUtils.success(userList);
     }

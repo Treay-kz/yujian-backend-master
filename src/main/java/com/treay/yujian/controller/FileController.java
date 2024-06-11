@@ -49,6 +49,9 @@ public class FileController {
      * @param file
      * @return
      */
+    //  接收文件保存到服务器上，然后判断 服务器中是否有相同文件，如果有，则返回文件的url，
+    //  如果没有，则构造新的url并返回
+    //  最后将该文件相关信息存入数据库
     @PostMapping("/upload")
     public BaseResponse<String> upload(@RequestParam MultipartFile file) throws Exception {
 
@@ -84,7 +87,7 @@ public class FileController {
                 avatar.delete();
             } else {
                 // 服务器
-//                url = "http://yujian-backend.treay.cn/api/file/" + fileUuid;
+                //  url = "http://yujian-backend.treay.cn/api/file/" + fileUuid;
                 // 本地
                 url = "http://localhost:8080/api/file/" + fileUuid;
             }
@@ -96,8 +99,8 @@ public class FileController {
             avatarFile.setType(type);
             avatarFile.setUrl(url);
             avatarFile.setMd5(md5);
-            avatarFile.setUserId(1L); // 没删
-            // insert into avatar avatarFile
+            avatarFile.setUserId(1L); // 没用但没删
+            // insert into avatar(name, size, type, url, md5, user_id。。。)
             avatarService.save(avatarFile);
             // 返回文件路径或其他响应
             return ResultUtils.success(url);

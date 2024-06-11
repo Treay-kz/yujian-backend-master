@@ -39,8 +39,8 @@ public class NoticeServiceImpl extends ServiceImpl<NoticeMapper, Notice>
                 AddFriendStatusEnum.ADDING.getValue());
 
         List<Notice> noticeList = this.list(queryWrapper);
-        ArrayList<Long> userIds = new ArrayList<>();
 
+        ArrayList<Long> userIds = new ArrayList<>();
         noticeList.stream().map(notice -> userIds.add(notice.getSenderId())).collect(Collectors.toList());
 
         if (CollectionUtils.isEmpty(userIds)){

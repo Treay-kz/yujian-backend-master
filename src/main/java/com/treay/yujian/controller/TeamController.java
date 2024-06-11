@@ -53,6 +53,14 @@ public class TeamController {
      * @param addTeamRequest
      * @return
      */
+    //代码通过TeamServiceImpl 类中 addTeam 方法的实现。该方法负责根据提供的 AddTeamRequest 对象创建团队。
+    // 该方法首先会检查 addTeamRequest 参数是否为空。如果为空抛出错误异常，
+    // 接下来，通过调用 userService 的 getLoginUser 方法来检查用户是否已登录。如果用户没有登录、就会继续验证 addTeamRequest 对象中的信息。
+    // 检查团队规模、标题、描述、状态和密码是否有效。如果其中任何一项验证失败，就会抛出带有 PARAMS_ERROR 错误代码的异常。
+    // 验证完成后，该方法将创建一个新的团队对象，并将 addTeamRequest 对象中的属性复制到该对象中。
+    // 接着检查用户已创建的团队数量，果用户已创建 5 个团队，则会抛出错误异常。如果所有验证都通过，就会将团队信息插入团队表
+    // ，并获取新生成的团队 ID。然后，将用户与团队的关系插入关系表。最后，调用 chatService 的 addTeamChat 方法创建团队聊天频道。
+    // 如果团队创建成功，则返回团队 ID。
     /**处理添加团队的请求。接收一个AddTeamRequest对象作为请求体，如果请求体为空，
      则抛出BusinessException异常。调用teamService的addTeam方法添加团队，并返回结果。**/
     @PostMapping("/add")
@@ -72,6 +80,12 @@ public class TeamController {
      * @param teamUpdateRequest
      * @return
      */
+    //在 controller 层接收到用户发来的 post 请求，请求中包括一个 TeamUpdateRequest，
+    // 其中包括队伍 id、名称、状态等信息，然后校验用户是否登录，
+    // 如果已登录，则后调用 teamService 的 updateTeam 方法执行加入队伍的业务逻辑，
+    // 在teamService 的实现类的updateTeam方法中，校验用户的各项参数是否符合规定如用户是否为队长、修改为加密队伍时是否设置了密码等等，
+    // 校验通过后，会调用 userService(或 userMapper) 的 updateById(updateById)方法（该方法由 MyBatis-Plus 提供）
+    // 在队伍表中更新队伍的信息，实现更新队伍的逻辑。
     @PostMapping("/update")
     public BaseResponse<Boolean> updateTeam(@RequestBody TeamUpdateRequest teamUpdateRequest) {
         if (teamUpdateRequest == null) {
@@ -153,6 +167,11 @@ public class TeamController {
      * @param teamJoinRequest
      * @return
      */
+    // 在 controller 层接收到用户发来的 post 请求，请求中包括一个 TeamJoinRequest，其中包括了用户账号、UUID、队伍 id 和
+    // 加入队伍密码,然后校验用户是否登录，如果已登录，则后调用 teamService 的 joinTeam 方法执行加入队伍的业务逻辑，
+    // 在teamService 的实现类的joinTeam方法中，校验用户的各项参数是否符合规定如加入的队伍是否已过期、加入加密队伍时输入的密码是否正确等等，
+    // 校验通过后，会调用 userTeamService（或 userTeamMapper） 的 save（或 insert） 方法（该方法由 MyBatis-Plus 提供）
+    // 向用户队伍关系表中插入用户和队伍的关系信息，实现加入队伍的逻辑。
     @PostMapping("/join")
     public BaseResponse<Boolean> joinTeam(@RequestBody TeamJoinRequest teamJoinRequest) {
         if (teamJoinRequest == null){

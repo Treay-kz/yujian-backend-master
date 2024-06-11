@@ -102,6 +102,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
 
         QueryWrapper<Team> queryWrapper = new QueryWrapper<>();
         queryWrapper.lambda().eq(Team::getUserId, userId);// 设置  查询创建者id为自己的记录
+        //SELECT * FROM team WHERE userid = #{userId}
         long hasTeamNum = this.count(queryWrapper); // 去数据库中查询
         if (hasTeamNum >= 5) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户最多创建 5 个队伍");
@@ -296,6 +297,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
             // 如果退出的不是队长，则直接退出队伍，删除用户-队伍关系
         }
         // 删除用户-队伍关系
+        // delete * from userTeam where teamId = ? and userId = ?
         return userTeamService.remove(queryWrapper);
     }
     @Override
@@ -304,6 +306,8 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         //当前登录用户
         User loginUser = userService.getLoginUser(teamQueryRequest.getUserAccount(), teamQueryRequest.getUuid());
         // 构建查询包装器
+        //QueryWrapper<Team> queryWrapper = new QueryWrapper<>(); 这行代码是MyBatis-Plus框架中常用的一种查询条件构造方式，用于构建动态SQL查询语句。
+        // QueryWrapper是一个强大的工具类，允许你在不编写原生SQL的情况下，灵活地构建复杂的查询条件。
         QueryWrapper<Team> queryWrapper = new QueryWrapper<>();
 
         // 动态SQL构建，根据不同的查询条件进行过滤
@@ -327,7 +331,11 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         }
         // 过滤未过期或永久有效的队伍
         //WHERE expireTime > CURRENT_TIMESTAMP OR expireTime IS NULL; 查询Team表中expireTime字段大于当前时间或者为空的记录
-        queryWrapper.lambda().and(qw -> qw.gt(Team::getExpireTime, new Date()).or().isNull(Team::getExpireTime));
+        queryWrapper.lambda()
+                .and(qw ->
+                        qw.gt(Team::getExpireTime, new Date())// 过滤出过期时间大于当前时间的记录
+                        .or()
+                        .isNull(Team::getExpireTime));  // 过滤出过期时间为 null 的记录
 
         // 如果状态有效且为公开或秘密，进行状态过滤
         // 从 teamQueryRequest 对象中获取状态字段的值
@@ -354,13 +362,15 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
                 // 构建VO对象并复制基础信息
                 TeamUserVO teamUserVO = new TeamUserVO();
                 BeanUtils.copyProperties(team, teamUserVO);
+
                 // 获取队伍成员信息并脱敏
+                //初始化了一个ArrayList对象，用于存储User类型的对象（ArrayList允许存储任何类型的对象）
                 ArrayList<User> userList = new ArrayList<>();
                 ArrayList<Long> memberId = new ArrayList<>();
                 Long teamId = team.getId();
                 QueryWrapper<UserTeam> userTeamQueryWrapper = new QueryWrapper<>();
-                userTeamQueryWrapper.lambda().eq(UserTeam::getTeamId, teamId);//查询条件
-                //调用userTeamService.list(userTeamQueryWrapper)方法执行查询，获取与当前团队相关的所有UserTeam记录列表。
+                userTeamQueryWrapper.lambda().eq(UserTeam::getTeamId, teamId);//查询条件:SELECT * FROM user_team WHERE team_id = getTeamId
+
                 List<UserTeam> list = userTeamService.list(userTeamQueryWrapper);
                 for (UserTeam userTeam : list) {
                     //使用userService.getById(userTeam.getUserId())方法根据UserTeam对象中的userId获取完整的用户信息。
@@ -377,11 +387,12 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
                 teamUserVO.setCreateUsername(userById.getUsername());
                 teamUserVO.setCreateAvatarUrl(userById.getAvatarUrl());
                 teamUserVO.setCreateUser(userById);
-                // 设置成员ID列表
+                // 成员ID列表
+                //teamUserVO 要被传送到前端，那么前端就可以使用这个 memberId 来识别或操作特定的队伍成员。
                 teamUserVO.setMemberId(memberId);
                 // 判断当前用户是否已加入队伍
                 Long userId = loginUser.getId(); //获取当前登录用户的ID
-                teamUserVO.setIsJoin(memberId.contains(userId));
+                teamUserVO.setIsJoin(memberId.contains(userId)); //判断用户是否包含在队伍里
                 // 添加到响应列表
                 respTeamUserVO.add(teamUserVO);
             }

@@ -50,13 +50,6 @@ public interface UserService extends IService<User> {
      */
     User getSafetyUser(User originUser);
 
-    /**
-     * 用户注销
-     *
-     * @param request
-     * @return
-     */
-    int userLogout(HttpServletRequest request);
 
     /**
      * 根据标签搜索用户
@@ -74,11 +67,6 @@ public interface UserService extends IService<User> {
      */
     int updateUser(UserDTO userDTO, User loginUser);
 
-//    /**
-//     * 获取当前登录用户信息
-//     * @return
-//     */
-//    User getLoginUser(HttpServletRequest request);
 
 
     /**
@@ -127,13 +115,6 @@ public interface UserService extends IService<User> {
      */
     BaseResponse<Boolean> updatePassword(UserForgetRequest userForgetRequest);
 
-    /**
-     * 获取标签
-     * @param oldTags
-     * @param request
-     * @return
-     */
-    TagVo getTags(String oldTags, HttpServletRequest request);
 
     /**
      * 添加好友
@@ -187,9 +168,10 @@ public interface UserService extends IService<User> {
 
     /**
      * 推荐用户
-     * @param id
+     * @param userId
      * @param pageSize
      * @param pageNum
+     * @return
      */
     Page<User> recommend(long userId, long pageSize, long pageNum);
 }

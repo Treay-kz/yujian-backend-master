@@ -115,6 +115,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
         // 获取缓存验证码
         String redisKey = String.format(SEND_MESSAGE_KEY +  userEmail);
+        // 处理字符串类型值的操作
         ValueOperations<String, Object> valueOperations = redisTemplate.opsForValue();
         UserSendMessage sendMessage = (UserSendMessage) valueOperations.get(redisKey);
         if (!Optional.ofNullable(sendMessage).isPresent()) {
@@ -156,7 +157,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         String defaultTag = "\"萌新\"";
         user.setTags("["+  defaultTag + "]");
 
-        // insert into user value (...)
+        // insert into user(...)
         // this.save(user) this指userService
         long saveResult = userMapper.insert(user);
 
@@ -255,17 +256,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         return safetyUser;
     }
 
-    /**
-     * 用户注销
-     *
-     * @param request
-     */
-    @Override
-    public int userLogout(HttpServletRequest request) {
-        // 移除登录态
-        request.getSession().removeAttribute(USER_LOGIN_STATE);
-        return 1;
-    }
 
     /**
      * 根据标签搜索用户（内存过滤）
@@ -368,24 +358,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
 
 
-//    @Override
-//    public User getLoginUser(HttpServletRequest request) {
-//        if (request == null) {
-//            return null;
-//        }
-//        Object userObj = request.getSession().getAttribute(USER_LOGIN_STATE);
-//        if (userObj == null) {
-//            throw new BusinessException(ErrorCode.NO_AUTH);
-//        }
-//        return (User) userObj;
-//    }
+
 
     @Override
     public User getLoginUser(String userAccount, String uuid) {
-        // 从Redis中查询用户是否存在
+        // 从Redis中查询用户是否存在  opsForHash() 返回一个操作redis 中hash 的类 包含好多使用方法
         User cashUser = (User) redisTemplate.opsForHash().get(TOKEN_KEY + uuid, userAccount);
         if (cashUser == null) {
             throw new BusinessException(ErrorCode.NO_AUTH);
+        } else {
+
         }
         return cashUser;
     }
@@ -425,7 +407,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             return cacheUserList;
         }
 
-
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         queryWrapper.select("id", "tags");
         queryWrapper.isNotNull("tags");
@@ -434,10 +415,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
         String tags = loginUser.getTags();
         Gson gson = new Gson();
-        // 登录用户标签
+        // 登录用户标签 把标签转换成list<string>
         List<String> tagList = gson.fromJson(tags, new TypeToken<List<String>>() {
         }.getType());
-
+        // 其中每个Pair包含一个User对象和一个Long型的距离值。这个距离值用于衡量用户之间的标签相似度，越小表示越相似。
         Queue<Pair<User, Long>> priorityQueue = new PriorityQueue<>(
                 Comparator.comparing(Pair::getValue)
         );
@@ -459,24 +440,28 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             }
         }
 
-        // 从优先队列中提取结果，直接获得topN的用户ID列表，无需再进行排序
+        // 从优先队列中提取结果，直接获得topN的用户ID列表
         List<Long> userIdList = new ArrayList<>(priorityQueue.size());
         for (Pair<User, Long> pair : priorityQueue) {
             userIdList.add(pair.getKey().getId());
         }
 
-
         // 使用userIdList查询并转换为最终的User列表
         QueryWrapper<User> userQueryWrapper = new QueryWrapper<>();
         userQueryWrapper.in("id", userIdList);
+        // 1,3,2 => 1,2,3 => 1,3,2
         Map<Long, List<User>> userIdUserListMap = this.list(userQueryWrapper)
                 .stream()
+                // value
                 .map(user -> getSafetyUser(user))
+                // key
                 .collect(Collectors.groupingBy(User::getId));
+        // 基于于之前得到的ID列表顺序，从分组后的映射中取出每个用户的详细信息，组装成最终返回的finalUserList。
         List<User> finalUserList = new ArrayList<>();
         for (Long userId : userIdList) {
             finalUserList.add(userIdUserListMap.get(userId).get(0));
         }
+
         //写缓存
         try {
             redisTemplate.opsForValue().set(key, finalUserList, 5, TimeUnit.MINUTES);
@@ -493,11 +478,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         if (StringUtils.isEmpty(email)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "email为空");
         }
+
         Pattern emailValidPattern = Pattern.compile("[a-zA-Z0-9]+@[A-Za-z0-9]+\\.[a-z0-9]");
         Matcher emailMatch = emailValidPattern.matcher(email);
+
         if (!emailMatch.find()) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "邮箱格式错误");
         }
+
         String code = generateValidateCode(6).toString();
         RLock lock = redissonClient.getLock(MESSAGE_KEY + email);
         try {
@@ -577,10 +565,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         } else {
             return ResultUtils.success(false);
         }
-
     }
 
-    @Override
+
     public TagVo getTags(String oldTags, HttpServletRequest request) {
         if (request == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -665,18 +652,18 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
      * @param addFriendRequest
      * @return
      */
-    @Override
+    @Override //使用了Spring中的@Transactional注解来进行事务管理。首先对方法进行了重写，接收一个AddFriendRequest对象作为参数。
     @Transactional(rollbackFor = Exception.class)
     public Boolean addFriend(AddFriendRequest addFriendRequest) {
-        RLock lock = redissonClient.getLock(ADD_FRIEND_KEY);
+        RLock lock = redissonClient.getLock(ADD_FRIEND_KEY); //在方法中，首先通过redissonClient.getLock方法获取一个锁对象lock
+        // 用于对添加好友的操作进行加锁，以避免并发操作导致数据不一致。
         try {
-            //只有一个线程会获取锁
-            //获取发送人id和接收人id
+            //接着从addFriendRequest对象中获取发送人id和接收人id
             Long recipientId = addFriendRequest.getRecipientId();
             Long senderId = addFriendRequest.getSenderId();
             // 根据发送人和收件人id  获取他们的用户信息
-            User sender = this.getById(recipientId);//this是Userservice
-            User recipient = this.getById(senderId);
+            User sender = this.getById(recipientId); //然后通过this.getById(recipientId)方法从User表中获取recipient用户对象
+            User recipient = this.getById(senderId); //this代表当前类Userservice。同理
             // 判断发件人和收件人是否相等
             if (sender == recipient){
                 throw  new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -685,23 +672,20 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
                 throw  new BusinessException(ErrorCode.PARAMS_ERROR,"发件人或收件人不存在");
             }
 
-            //校验是否已经是好友
-            Boolean alreadyFriends = checkIfAlreadyFriends(sender, recipientId);
-            Boolean alreadyFriends1 = checkIfAlreadyFriends(recipient, senderId);
-            if (alreadyFriends && alreadyFriends1) {
-                throw new BusinessException(ErrorCode.PARAMS_ERROR, "对方已经是您的好友，请勿重新发送");
-            }
-
             //判断是否已经发送好友申请，如果状态为添加失败则可以继续添加
+            //主要是用来查询数据库中是否已经存在由指定senderId发送给recipientId的好友申请通知。
             QueryWrapper<Notice> queryWrapper = new QueryWrapper<>();
             queryWrapper.lambda().eq(Notice::getSenderId, senderId).eq(Notice::getRecipientId,
-                    recipientId);//设置查询条件
-            List<Notice> list = noticeService.list(queryWrapper);// 在消息表中查询 是否已发送了好友申请
+                    recipientId);// 首先，使用QueryWrapper构建查询条件，通过lambda表达式设置查询条件为senderId和recipientId。
+            List<Notice> list = noticeService.list(queryWrapper);// 然后调用noticeService的list方法执行查询操作，并将结果存储在list列表中。
+            // 接着遍历查询结果列表，如果查询结果中存在状态为添加中(ADDING)的好友申请通知，则抛出业务异常，提示“正在发送好友申请，请勿重新发送”。
             for (Notice notice : list) {
                 //正在发送好友申请
                 if (notice.getAddFriendStatus().equals(AddFriendStatusEnum.ADDING.getValue())) {
                     throw new BusinessException(ErrorCode.PARAMS_ERROR, "正在发送好友申请，请勿重新发送!");
-                }
+                }  //SELECT * FROM notice
+                //WHERE senderId = ? AND recipientId = ?
+                //AND addFriendStatus = 'ADDING';
 
                 //添加成功，对方是你的好友
                 if (notice.getAddFriendStatus().equals(AddFriendStatusEnum.ADD_SUCCESS.getValue())) {
@@ -710,27 +694,30 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             }
 
             // 保存到消息通知表中
-            Notice notice = new Notice();
-            notice.setSenderId(senderId);
-            notice.setRecipientId(recipientId);
-            notice.setAddFriendStatus(AddFriendStatusEnum.ADDING.getValue());
-            boolean save = noticeService.save(notice);
-            if (!save) {
+            //这段代码用于创建一个通知对象（Notice），设置发送方ID、接收方ID以及好友添加状态，并将该通知对象保存到数据库中。
+
+            Notice notice = new Notice(); //创建一个Notice对象并实例化为notice。
+            notice.setSenderId(senderId); //使用setSenderId方法为notice设置发送方ID
+            notice.setRecipientId(recipientId); //同理
+            notice.setAddFriendStatus(AddFriendStatusEnum.ADDING.getValue()); //设置好友添加状态，
+            // 这里使用了AddFriendStatusEnum.ADDING.getValue()来获取添加中状态的值。
+            // sql: insert into notice (senderId，recipientId...)
+            boolean save = noticeService.save(notice); //调用noticeService的save方法保存notice对象到数据库中，并将返回结果存储在save变量中
+            if (!save) {  //判断save的返回值
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "保存消息通知表失败!");
             }
 
             // 修改被添加人的被添加次数
-            User user = this.getById(recipientId);
-            if (user.getAddCount() != null){
+            User user = this.getById(recipientId); //通过this.getById(recipientId)方法获取数据库中recipientId对应的用户对象，并将其赋值给变量user。
+            if (user.getAddCount() != null){  //检查用户对象user的addCount属性是否为空，如果不为空，则将其值加1；如果为空，则将其设置为1。
                 user.setAddCount(user.getAddCount() + 1);
             }else {
                 user.setAddCount(1);
             }
-            this.updateById(user);
+            this.updateById(user); //调用this.updateById(user)方法更新数据库中用户对象user的信息。
             return true;
         } finally {
-
-            if (lock.isHeldByCurrentThread()) {
+            if (lock.isHeldByCurrentThread()) { //判断当前线程是否持有锁，如果是则释放锁。
                 lock.unlock();
             }
         }
@@ -740,7 +727,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     @Override
     @Transactional(rollbackFor = Exception.class)//Spring事务管理，保持数据库数据一致性
     public Boolean deleteFriend(DeleteFriendRequest deleteFriendRequest) {
-        //从DeleteFriendRequest对象中提取发送者和接收者（即被删除的好友）的ID， 然后通过这些ID从系统中获取相应的用户信息
+        //从DeleteFriendRequest对象中提取发送者和接收者（即被删除的好友）的ID，然后通过这些ID从系统中获取相应的用户信息
         Long senderId = deleteFriendRequest.getId();
         Long recipientId = deleteFriendRequest.getDeleteId();
         User sender = this.getById(senderId);
@@ -750,8 +737,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         }//因为前端发的请求不一定都是合法的，请求是可以构造的
 
         //删除好友，修改消息通知表的好友状态为添加失败
+        //创建QueryWrapper实例queryWrapper，并设置初始查询条件：查找通知表(Notice)中满足以下条件的第一条记录：
+        //接收者ID(recipientId)为senderId，
+        //发送者ID(senderId)为recipientId，
+        //添加好友状态(addFriendStatus)为ADD_SUCCESS（成功添加）。
+        // 要查两次是因为 在添加好友时 可能是 A 向 B 发送申请，也可能是 B 向 A 发送申请，所以要查两次
         QueryWrapper<Notice> queryWrapper = new QueryWrapper<>();
-        //  eq1: 表中的接受为senderId//当前用户   并且 表中发送者为 recipientId
         // 第一次查询
         queryWrapper.lambda().eq(Notice::getRecipientId, senderId).eq(Notice::getSenderId, recipientId).eq(Notice::getAddFriendStatus, AddFriendStatusEnum.ADD_SUCCESS.getValue());
         Notice notice = noticeService.getOne(queryWrapper);
@@ -784,26 +775,36 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
      * @return
      */
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public boolean agreeFriend(AddFriendRequest addFriendRequest) {
-        Long senderId = addFriendRequest.getSenderId();
-        Long recipientId = addFriendRequest.getRecipientId();
+    //@Transactional(rollbackFor = Exception.class)：这是一个事务注解，标记该方法是一个事务处理方法
+    @Transactional(rollbackFor = Exception.class) //rollbackFor = Exception.class表示当发生Exception异常时回滚事务。
+    public boolean agreeFriend(AddFriendRequest addFriendRequest) {  //这是方法的定义，表示返回值为一个布尔类型的结果。总之用于处理用户同意添加好友的逻辑。
+        Long senderId = addFriendRequest.getSenderId(); //从addFriendRequest对象中获取发送方ID，赋值给senderId变量。
+        Long recipientId = addFriendRequest.getRecipientId(); //同理
+
         // 校验发件人和收件人是否存在
-        validateUsersExist(senderId, recipientId);
-
-        User sender = this.getById(senderId);
-        User recipient = this.getById(recipientId);
-
-        // 校验是否已经是好友
-        Boolean alreadyFriends = checkIfAlreadyFriends(sender, recipientId);
-        Boolean alreadyFriends1 = checkIfAlreadyFriends(recipient, senderId);
-        if (alreadyFriends && alreadyFriends1) {
-            return true;
+        if (senderId <= 0  || recipientId <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "发件人或收件人不存在");
         }
-        // 修改消息通知表，设置添加状态为一天假
-        processFriendRequest(addFriendRequest, AddFriendStatusEnum.ADD_SUCCESS.getValue());
-        // 在好友列表互相添加id
-        addFriendToLists(addFriendRequest.getSenderId(), addFriendRequest.getRecipientId());
+
+        // 先查出符合要求的消息 设置查询条件 查询消息通知表中要拒绝的那条申请 且添加状态为"添加中"的消息通知
+        QueryWrapper<Notice> queryWrapper = new QueryWrapper<>();
+        queryWrapper.lambda()
+                .eq(Notice::getSenderId, senderId) // 设置查询通知表中 senderId 列 == 用户传入的senderId 记录  where senderId = ?
+                .eq(Notice::getRecipientId, recipientId) // 设置查询通知表中 recipientId 列 == 用户传入的 recipientId 的消息where recipientId = ?
+                .eq(Notice::getAddFriendStatus, AddFriendStatusEnum.ADDING.getValue()); // 设置查询通知表中 addFriendStatus 列 == ”添加中“ where addFriendStatus = ?
+        // 执行查询 select * from notice where senderId = ? and recipientId = ? and addFriendStatus = “添加中”
+        Notice notice = noticeService.getOne(queryWrapper);
+        // 修改消息通知表，将该条记录添加好友状态改为 “已拒绝”
+        if (notice != null) {
+            notice.setAddFriendStatus(AddFriendStatusEnum.ADD_SUCCESS.getValue());
+            if (!noticeService.updateById(notice)) {
+                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "更新失败");
+            }
+        }
+
+        // 在用户表中 好友列表互相添加id
+        addFriendList(this.getById(senderId), recipientId);
+        addFriendList(this.getById(recipientId), senderId);
         return true;
     }
 
@@ -813,75 +814,50 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         Long senderId = addFriendRequest.getSenderId();
         Long recipientId = addFriendRequest.getRecipientId();
         // 校验发件人和收件人是否存在
-        validateUsersExist(addFriendRequest.getSenderId(), addFriendRequest.getRecipientId());
-
-        User sender = this.getById(senderId);
-        User recipient = this.getById(recipientId);
-
-        // 校验是否已经是好友
-        Boolean alreadyFriends = checkIfAlreadyFriends(sender, recipientId);
-        Boolean alreadyFriends1 = checkIfAlreadyFriends(recipient, senderId);
-        // 如果不是好友就直接返回
-        if (alreadyFriends && alreadyFriends1) {
-            return true;
-        }
-        // 修改消息通知表
-        processFriendRequest(addFriendRequest, AddFriendStatusEnum.ADD_ERROR.getValue());
-
-        return true;
-
-    }
-
-    private void validateUsersExist(Long senderId, Long recipientId) {
-        User sender = this.getById(senderId);
-        User recipient = this.getById(recipientId);
-        if (sender == null || recipient == null) {
+        if (senderId <= 0  || recipientId <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "发件人或收件人不存在");
         }
-    }
 
-    // 提取公共方法处理通知
-    private void processFriendRequest(AddFriendRequest request, int newStatus) {
-        updateNoticeStatus(request.getSenderId(), request.getRecipientId(), newStatus);
-        updateNoticeStatus(request.getRecipientId(), request.getSenderId(), newStatus);
-    }
-
-    // 更新通知表状态
-    private void updateNoticeStatus(Long senderId, Long recipientId, int newStatus) {
+        // 先查出符合要求的消息 设置查询条件 查询消息通知表中要拒绝的那条申请 且添加状态为"添加中"的消息通知
         QueryWrapper<Notice> queryWrapper = new QueryWrapper<>();
         queryWrapper.lambda()
-                .eq(Notice::getSenderId, senderId)
-                .eq(Notice::getRecipientId, recipientId)
-                .eq(Notice::getAddFriendStatus, AddFriendStatusEnum.ADDING.getValue());
+                .eq(Notice::getSenderId, senderId) // 设置查询通知表中 senderId 列 == 用户传入的senderId 记录  where senderId = ?
+                .eq(Notice::getRecipientId, recipientId) // 设置查询通知表中 recipientId 列 == 用户传入的 recipientId 的消息where recipientId = ?
+                .eq(Notice::getAddFriendStatus, AddFriendStatusEnum.ADDING.getValue()); // 设置查询通知表中 addFriendStatus 列 == ”添加中“ where addFriendStatus = ?
+        // 执行查询 select * from notice where senderId = ? and recipientId = ? and addFriendStatus = “添加中”
         Notice notice = noticeService.getOne(queryWrapper);
+
+        // 修改消息通知表，将该条记录添加好友状态改为 “已拒绝”
         if (notice != null) {
-            notice.setAddFriendStatus(newStatus);
+            notice.setAddFriendStatus( AddFriendStatusEnum.ADD_ERROR.getValue());
             if (!noticeService.updateById(notice)) {
                 throw new BusinessException(ErrorCode.SYSTEM_ERROR, "更新失败");
             }
         }
-    }
-
-    // 添加好友到双方的好友列表
-    private void addFriendToLists(Long senderId, Long recipientId) {
-        addFriendList(this.getById(senderId), recipientId);
-        addFriendList(this.getById(recipientId), senderId);
+        return true;
     }
 
 
     @Override
     public List<User> listFriend(User loginUser) {
-        // 从数据库中获取最新数据
+        // 获取用户当前信息，通过数据库查询，最新数据
         User user = this.getById(loginUser.getId());
-        String friendIdList = user.getFriendId();
-
+        String friendIdList = user.getFriendId();//从对象用户中获取含有信息的字符串
+        //初始化一个ArrayList<User>来存储好友对象。
         ArrayList<User> userArrayList = new ArrayList<>();
+        //使用StrUtil.isBlank方法检查friendId是否为空或仅包含空白字符。
+        //如果是，直接返回一个空的ArrayList<User>，因为这意味着用户目前没有任何好友
+        //StrUtil.isBlank方法是类似字符串处理工具类中的一个实用方法，用于检查一个字符串是否为空或者仅仅包含空白字符，数据验证，确保字符串参数有效。
         if (StrUtil.isBlank(friendIdList)) {
             return userArrayList;
         }
-        // 转化为Json列表
+        //如果friendId非空，使用JSONUtil.parseArray方法将字符串转换为JSONArray。
+        // 这通常是因为friendId是以JSON格式存储的一系列好友ID。
+        // JSONUtil.parseArray是Fastjson库中的一个方法，用于将JSON格式的字符串解析成一个JSONArray对象。
         JSONArray jsonArray = JSONUtil.parseArray(friendIdList);
-        for (Object id : jsonArray) {
+        for (Object id : jsonArray) { //遍历JSONArray中的每个元素，每个元素是一个好友的ID。
+            //对每个好友ID调用getById方法，从数据库中获取对应用户的信息，并将其添加到userArrayList中。
+            // 将 Object 的id  强转为 Serializable 类  Serializable是个接口类
             userArrayList.add(this.getById((Serializable) id));
         }
 

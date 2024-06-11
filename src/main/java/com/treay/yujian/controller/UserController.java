@@ -45,8 +45,7 @@ public class UserController {
 
     @Resource
     private UserService userService;
-    @Resource
-    private UserMapper userMapper;
+
 
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
@@ -66,13 +65,14 @@ public class UserController {
             //  用于处理应用程序中的错误
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        // 根据AddFriendRequest对象中的uuid获取一个key，并使用该key从Redis中获取与用户账号对应的User对象。如果获取的User对象为null，
-        // 说明用户未登录，此时会抛出一个带有错误代码NOT_LOGIN的BusinessException异常。
+        /*@Param：在MyBatis等ORM框架中，用于给SQL映射文件中的参数命名，以便于将方法参数绑定到SQL语句的参数上。
+             一般用在在 Mapper 层中写 sql 语句时将参数传入 sql 语句中*/
+        // 使用 userAccount和uuid(用户登录凭证)校验用户是否登录
         User user =  userService.getLoginUser(addFriendRequest.getUserAccount(), addFriendRequest.getUuid());
         if (user == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN);
-        }
-        // 调用userService的addFriend方法来处理添加好友的业务逻辑，返回一个Boolean类型的结果。
+        }/*调用userService的addFriend方法来处理添加好友的业务逻辑，返回一个Boolean类型的结果。*/
+        // 已登录，调用userService的addFriend方法来处理添加好友的业务逻辑，返回一个Boolean类型的结果。
         Boolean result = userService.addFriend(addFriendRequest);
         return ResultUtils.success(result);
     }// 整段代码通过验证请求参数、用户登录状态，并调用相应的服务方法来实现添加好友功能
@@ -82,15 +82,22 @@ public class UserController {
      * @param deleteFriendRequest
      * @return
      */
-    @PostMapping("/friend/delete")
+    @PostMapping("/friend/delete")//是Spring MVC的注释，映射HTTP POST 发送的请求，使客户端发送的到该地址的时候能够调用该地址
     public BaseResponse<Boolean> deleteFriend(@RequestBody DeleteFriendRequest deleteFriendRequest) {
+        //用于接收客户端发送的JSON格式的数据，@RequestBody注解告诉Spring框架将请求体中的数据绑定到DeleteFriendRequest对象中。
+        // DeleteFriendRequest是一个自定义的封装类，
+        //定义了一个通用的响应类BaseResponse<T>，它被设计用于封装从服务器端返回给客户端的数据和状态信息
+        //判空，用户请求响应是否为空，为空则抛出异常
         if (deleteFriendRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+
+        //不为空，判断当前用户是否登录
         User loginUser = userService.getLoginUser(deleteFriendRequest.getUserAccount(), deleteFriendRequest.getUuid());
         if (loginUser == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN, "未登录");
         }
+        //已登录，调用userService中的deleteFriend方法，进行删除好友操作
         Boolean result = userService.deleteFriend(deleteFriendRequest);
         return ResultUtils.success(result);
     }
@@ -106,14 +113,19 @@ public class UserController {
         if (addFriendRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        // 调用userService的getLoginUser方法来验证用户的登录状态
-        // 根据传入的userAccount和uuid参数在后台获取对应的登录用户信息并赋值给loginUser变量
+
+        // 使用 userAccount和uuid(用户登录凭证)校验用户是否登录
         User loginUser = userService.getLoginUser(addFriendRequest.getUserAccount(), addFriendRequest.getUuid());
         if (loginUser == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN, "未登录");
         }
-        // 调用userService的agreeFriend方法来处理同意好友请求的业务逻辑
-        boolean agree = userService.agreeFriend(addFriendRequest);
+
+        // 如果登录用户 不等于 接收者id则返回
+        if (loginUser.getId() != addFriendRequest.getRecipientId()){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+
+        boolean agree = userService.agreeFriend(addFriendRequest);/*调用userService的agreeFriend方法来处理同意好友请求的业务逻辑*/
         if (!agree) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "同意好友申请失败");
         }
@@ -130,13 +142,16 @@ public class UserController {
         if (addFriendRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        //调用userService的getLoginUser方法来验证用户的登录状态
-        // 根据传入的userAccount和uuid参数在后台获取对应的登录用户信息并赋值给loginUser变量
+        // 使用 userAccount和uuid(用户登录凭证)校验用户是否登录
         User loginUser = userService.getLoginUser(addFriendRequest.getUserAccount(), addFriendRequest.getUuid());
         if (loginUser == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN, "未登录");
         }
-        boolean agree = userService.rejectFriend(addFriendRequest);
+        // 如果登录用户 不等于 接收者id则返回异常
+        if (loginUser.getId() != addFriendRequest.getRecipientId()){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        boolean agree = userService.rejectFriend(addFriendRequest);/*调用userService的agreeFriend方法来处理同意好友请求的业务逻辑*/
         if (!agree) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "拒绝好友申请失败");
         }
@@ -150,13 +165,16 @@ public class UserController {
      */
     @GetMapping("/friend/list")
     public BaseResponse<List<User>> listFriend(CurrentUserRequest currentUserRequest) {
+        //判空，用户请求是否为空
         if (currentUserRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+        // 调用userService的getLoginUser方法，通过userAccount和uuid获取当前登录的用户信息。
         User loginUser = userService.getLoginUser(currentUserRequest.getUserAccount(), currentUserRequest.getUuid());
         if (loginUser == null) {
             throw new BusinessException(ErrorCode.NO_AUTH, "未登录");
         }
+        //调用userService的listFriend方法
         List<User> friendList = userService.listFriend(loginUser);
         return ResultUtils.success(friendList);
     }
@@ -188,7 +206,20 @@ public class UserController {
      * @param userRegisterRequest
      * @return
      */
-    // 用户注册的接口
+
+    /*Controller层：
+    用户通过前端发送POST请求到/register端点，请求体包含UserRegisterRequest对象，该对象有userAccount(用户名)、userEmail(邮箱)、code(验证码)、userPassword(密码)、checkPassword(确认密码)。
+    控制器检查userRegisterRequest是否为空，若为空则抛出PARAMS_ERROR异常。
+    控制器调用userService.userRegister方法，传递注册所需的所有参数。
+    UserService实现类：
+    参数校验：首先进行参数有效性校验，确保所有必填项非空，用户名长度、密码长度合规，邮箱格式正确，密码与确认密码匹配，且验证码正确。
+    数据库查询：检查用户名是否已存在，如果存在则抛出PARAMS_ERROR异常。
+    密码加密：使用MD5加密用户密码。
+    用户实体构建：创建User对象，设置账户、加密后的密码、邮箱等信息，包括默认的头像URL、用户名和标签。
+    保存用户：通过userMapper.insert方法将用户信息保存至数据库，如果插入失败则抛出SYSTEM_ERROR异常。
+    生成星球编码：设置用户的星球编码并更新用户信息。
+    返回用户ID：注册成功后，返回新用户的ID给Controller层。
+     */
     @PostMapping("/register")
     public BaseResponse<Long> userRegister(@RequestBody UserRegisterRequest userRegisterRequest) {
         // 判断传入的注册请求是否为空
@@ -226,7 +257,21 @@ public class UserController {
      * @param userLoginRequest
      * @return
      */
-    // 用户登录的接口
+
+    /*
+        Controller层：
+        用户通过前端发送POST请求到/login端点，请求体包含UserLoginRequest对象，该对象有userAccount(用户名)、userPassword(密码)、uuid(用户唯一标识)。
+        控制器检查userLoginRequest是否为空，以及用户名和密码是否为空，若为空则抛出PARAMS_ERROR异常。
+        控制器调用userService.userLogin方法，传递登录所需参数。
+        UserService实现类：
+        参数校验：检查用户名、密码长度，以及用户名是否含有非法字符。
+        密码加密：加密用户提供的密码。
+        登录状态检查：检查Redis中是否有该用户的登录会话，如果有且未过期，则直接返回现有的Token。
+        查询数据库：如果Redis中没有有效的会话，使用加密后的密码查询数据库中是否存在匹配的用户。
+        安全性处理：获取安全的用户对象（可能去除敏感信息）。
+        生成Token：生成新的UUID作为Token的一部分，同时存储用户安全信息到Redis中，设置过期时间。
+        返回Token：登录成功后，返回新生成的Token给Controller层。
+     */
     @PostMapping("/login")
     public BaseResponse<String> userLogin(@RequestBody UserLoginRequest userLoginRequest) {
         // 判断传入的登录请求是否为空
@@ -330,6 +375,12 @@ public class UserController {
      * @param uuid
      * @return
      */
+   // 这段代码是一个GET请求的接口方法，用于推荐用户列表。它接受参数pageSize（每页记录数）、pageNum（页码）、userAccount（用户账号）
+    // 和uuid（用户UUID），用于筛选和分页结果。首先，方法对输入参数进行验证，如果任何参数无效，
+    // 则抛出一个带有错误代码的BusinessException异常。接下来，它通过调用userService组件的getLoginUser方法来检查用户是否已登录。
+    // 然后，它创建一个新的Page对象来存储分页结果。如果推荐用户列表未缓存，则从数据库中查询按照addCount属性降序排序的所有用户列表。
+    // 然后，过滤掉当前用户。接下来，它对用户列表进行数据脱敏处理，
+    // 通过调用getSafetyUser方法对每个用户进行处理。经过过滤和脱敏处理后的用户列表设置为userPage对象的记录。
     @GetMapping("/recommend")
     public BaseResponse<Page<User>> recommendUsers(long pageSize, long pageNum, String userAccount, String uuid) {
         // 参数验证

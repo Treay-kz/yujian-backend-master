@@ -279,7 +279,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         } else {
             // 如果队伍中有多人
             // 如果退出的是队长，则将队伍创建人转移给第二个加入的成员
-            if (Objects.equals(team.getUserId(), userId)) {
+            if (team.getUserId().equals(userId)) {
                 Team tempTeam = new Team();
                 // 设置队伍ID
                 tempTeam.setId(teamId);
@@ -342,6 +342,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         Integer status = teamQueryRequest.getStatus();
         // 使用 TeamStatusEnum 枚举类中的静态方法 getEnumByValue 将整数类型的 status 转换成对应的枚举类型
         TeamStatusEnum statusEnum = TeamStatusEnum.getEnumByValue(status);
+
         // 检查 statusEnum 是否为非空，并且它的值是 PUBLIC 或者 SECRET
         if (statusEnum != null && (statusEnum.equals(TeamStatusEnum.PUBLIC) || statusEnum.equals(TeamStatusEnum.SECRET))) {
             // 如果状态是 PUBLIC 或 SECRET，那么在 queryWrapper 中添加一个查询条件

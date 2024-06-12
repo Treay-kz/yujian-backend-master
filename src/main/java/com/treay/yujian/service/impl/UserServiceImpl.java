@@ -703,7 +703,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             // 这里使用了AddFriendStatusEnum.ADDING.getValue()来获取添加中状态的值。
             // sql: insert into notice (senderId，recipientId...)
             boolean save = noticeService.save(notice); //调用noticeService的save方法保存notice对象到数据库中，并将返回结果存储在save变量中
-            if (!save) {  //判断save的返回值
+            if (!save) {  //判断save的返回值,如果save的值为false，即保存操作失败，则会抛出提示。
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "保存消息通知表失败!");
             }
 
@@ -766,7 +766,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         removeFriendFromList(recipient, senderId);
 
         return true;
-
     }
 
     /**
@@ -787,31 +786,35 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         }
 
         // 先查出符合要求的消息 设置查询条件 查询消息通知表中要拒绝的那条申请 且添加状态为"添加中"的消息通知
-        QueryWrapper<Notice> queryWrapper = new QueryWrapper<>();
-        queryWrapper.lambda()
+        QueryWrapper<Notice> queryWrapper = new QueryWrapper<>();//这里用一个QueryWrapper对象来构建一个查询条件。
+        queryWrapper.lambda()//首先，通过lambda表达式设置了三个查询条件：
                 .eq(Notice::getSenderId, senderId) // 设置查询通知表中 senderId 列 == 用户传入的senderId 记录  where senderId = ?
                 .eq(Notice::getRecipientId, recipientId) // 设置查询通知表中 recipientId 列 == 用户传入的 recipientId 的消息where recipientId = ?
                 .eq(Notice::getAddFriendStatus, AddFriendStatusEnum.ADDING.getValue()); // 设置查询通知表中 addFriendStatus 列 == ”添加中“ where addFriendStatus = ?
-        // 执行查询 select * from notice where senderId = ? and recipientId = ? and addFriendStatus = “添加中”
+        //通过noticeService的getOne方法执行查询，根据以上设置的查询条件查询notice表中满足条件的第一条记录。
+        // select * from notice where senderId = ? and recipientId = ? and addFriendStatus = “添加中”
         Notice notice = noticeService.getOne(queryWrapper);
-        // 修改消息通知表，将该条记录添加好友状态改为 “已拒绝”
+
+        // 检查一个名为notice的对象是否不为空。
+        // 如果notice不为空，它会调用setAddFriendStatus方法将AddFriendStatusEnum.ADD_SUCCESS的值设置为notice的属性。
         if (notice != null) {
             notice.setAddFriendStatus(AddFriendStatusEnum.ADD_SUCCESS.getValue());
+            // 然后它会调用noticeService的updateById方法来更新notice对象，如果更新失败，它会抛出异常，并提示"更新失败"。
             if (!noticeService.updateById(notice)) {
                 throw new BusinessException(ErrorCode.SYSTEM_ERROR, "更新失败");
             }
-        }
+        }//总结：这整段代码的目的是在满足特定条件下更新notice对象的属性并进行错误处理。
 
         // 在用户表中 好友列表互相添加id
-        addFriendList(this.getById(senderId), recipientId);
-        addFriendList(this.getById(recipientId), senderId);
+        addFriendList(this.getById(senderId), recipientId); //senderId对应的用户添加到recipientId的好友列表中。
+        addFriendList(this.getById(recipientId), senderId); //recipientId对应的用户添加到senderId的好友列表中
         return true;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean rejectFriend(AddFriendRequest addFriendRequest) {
-        Long senderId = addFriendRequest.getSenderId();
+        Long senderId = addFriendRequest.getSenderId();  //从addFriendRequest对象中获取发送方ID，赋值给senderId变量。
         Long recipientId = addFriendRequest.getRecipientId();
         // 校验发件人和收件人是否存在
         if (senderId <= 0  || recipientId <= 0) {
@@ -819,17 +822,18 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         }
 
         // 先查出符合要求的消息 设置查询条件 查询消息通知表中要拒绝的那条申请 且添加状态为"添加中"的消息通知
-        QueryWrapper<Notice> queryWrapper = new QueryWrapper<>();
-        queryWrapper.lambda()
+        QueryWrapper<Notice> queryWrapper = new QueryWrapper<>();//这里用一个QueryWrapper对象来构建一个查询条件。
+        queryWrapper.lambda()//首先，通过lambda表达式设置了三个查询条件：
                 .eq(Notice::getSenderId, senderId) // 设置查询通知表中 senderId 列 == 用户传入的senderId 记录  where senderId = ?
                 .eq(Notice::getRecipientId, recipientId) // 设置查询通知表中 recipientId 列 == 用户传入的 recipientId 的消息where recipientId = ?
                 .eq(Notice::getAddFriendStatus, AddFriendStatusEnum.ADDING.getValue()); // 设置查询通知表中 addFriendStatus 列 == ”添加中“ where addFriendStatus = ?
         // 执行查询 select * from notice where senderId = ? and recipientId = ? and addFriendStatus = “添加中”
         Notice notice = noticeService.getOne(queryWrapper);
 
-        // 修改消息通知表，将该条记录添加好友状态改为 “已拒绝”
-        if (notice != null) {
+        //检查一个名为notice的对象是否不为空。
+        if (notice != null) {//// 如果notice不为空，它会调用setAddFriendStatus方法将AddFriendStatusEnum.ADD_SUCCESS的值设置为notice的属性。
             notice.setAddFriendStatus( AddFriendStatusEnum.ADD_ERROR.getValue());
+            // 然后它会调用noticeService的updateById方法来更新notice对象，如果更新失败，它会抛出异常，并提示"更新失败"。
             if (!noticeService.updateById(notice)) {
                 throw new BusinessException(ErrorCode.SYSTEM_ERROR, "更新失败");
             }
@@ -860,9 +864,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             // 将 Object 的id  强转为 Serializable 类  Serializable是个接口类
             userArrayList.add(this.getById((Serializable) id));
         }
-
         return userArrayList;
-
     }
 
     /**
@@ -898,6 +900,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             oldUser.setTags(userDTO.getTags());
         }
         int result = userMapper.updateById(oldUser);
+
         // 删除缓存
         String matchKey = USER_MATCH_KEY + loginUser.getId();
         String recommendKey = USER_SEARCH_KEY + loginUser.getId();
@@ -929,7 +932,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         // 读取缓存
         List<User> userList = (List<User>) redisTemplate.opsForValue().get(key);
         // 如果缓存有数据，直接返回
-        if (com.baomidou.mybatisplus.core.toolkit.CollectionUtils.isNotEmpty(userList)) {
+        if (!(CollectionUtils.isEmpty(userList))) {
             userList = userList.stream()
                     .filter(user -> user.getId() != userId)
                     .collect(Collectors.toList());

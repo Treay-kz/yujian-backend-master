@@ -8,13 +8,9 @@ spring:
     name: yujian-backend
   # DataSource Config
   datasource:
-#    driver-class-name: com.mysql.cj.jdbc.Driver
-#    url: jdbc:mysql://8.130.136.183:3306/yujian?serverTimezone=Asia/Shanghai
-#    username: yujian
-#    password: wMXPRATjPCnaYApR
     url: jdbc:mysql://localhost:3306/partnermatching?serverTimezone=Asia/Shanghai
     username: root
-    password: hjk1679924491
+    password: xxxxxxxxx
 #   session 失效时间（分钟）
   session:
     timeout: 86400
@@ -33,25 +29,19 @@ spring:
   activemq:
     broker-url:
 
-#  redis:
-#    port: 6379
-#    host: 8.130.136.183
-#    database: 1
-#    password: 63KVTkg55tpjhoRvf2
-
 
   rabbitmq:
     host: 192.168.183.1
     port: 5672
     username: weslie
-    password: 123321
+    password: xxxxx
 
   # 邮件配置
   mail:
     host: smtp.qq.com
     port: 587
-    username: 169924491@qq.com
-    password: jyljhbuvzxdeejcg
+    username: 1xxxxxx@qq.com
+    password: xxxxxxxx
 
 
 server:
